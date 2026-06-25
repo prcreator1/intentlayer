@@ -296,6 +296,9 @@ mod tests {
         let req = crate::llm::LlmCompileRequest {
             original_prompt: "test".into(),
             category: "architecture_planning".into(),
+            instruction: "rewrite".into(),
+            must_preserve: vec![],
+            must_not_invent: vec![],
         };
         let provider = crate::llm::NoopLlmCompiler;
         assert!(provider.compile(&req).is_err());

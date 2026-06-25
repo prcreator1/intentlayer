@@ -142,6 +142,9 @@ tests/
 
 **Post-review patch:** all fallback paths now preserve original_prompt. Prose-wrapped JSON extraction is string-aware (handles /users/{id}, escaped quotes). 9 new tests added (5 fallback + 4 extraction).
 
+
+**Codex P1/P2 fixes:** parser fallback uses redacted envelope prompt (no raw secret re-leak). Final LLM output runs invention guard. Provider receives full safety envelope with instruction, constraints, JSON contract. LlmCompileRequest now carries instruction, must_preserve, must_not_invent.
+
 ### Test Results
 
 ```
@@ -567,3 +570,32 @@ a safe fallback.
 
 ### Test Results
 **125 tests: 125 passed, 0 failed, 0 ignored**
+
+---
+
+## Phase 016 — LLM Compile Orchestration
+
+### What Changed
+- New `src/llm_orchestrate.rs`: `compile_with_llm_orchestration()` wires
+  safety envelope (Phase 014), provider trait, and parser (Phase 015) into
+  one controlled path.
+- 7 mock providers for testing: ReturnsJson, ReturnsFencedJson, ReturnsBareText, ReturnsEmpty, Fails, InventsStripe, InspectsRequest.
+- README: LLM Compile Orchestration section.
+- 21 orchestration tests covering all paths.
+
+### Orchestration Flow
+1. Build safety envelope with secret redaction
+2. Local secret passthrough → bypasses provider entirely
+3. Call `LlmProvider` trait (mock only)
+4. Parse provider output (Phase 015 parser)
+5. Fallback locally on provider failure or invalid output
+
+### Real LLM Calls?
+**No.** Mock providers only. No network. No OAuth.
+
+### Default Compile Behavior
+**Unchanged.** `compile()` does not call LLM orchestration. Orchestration
+is explicit opt-in via `compile_with_llm_orchestration()`.
+
+### Test Results
+**146 tests: 146 passed, 0 failed, 0 ignored**
