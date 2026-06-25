@@ -93,6 +93,16 @@ fn smoke_real_llm_compile_call() {
         "Must have compiled_prompt field"
     );
     assert!(stdout.contains("warnings"), "Must have warnings field");
+    // Prove real provider success — not fallback JSON
+    let lower = stdout.to_lowercase();
+    assert!(
+        !lower.contains("llm provider failed")
+            && !lower.contains("fell back to local compilation")
+            && !lower.contains("fallback"),
+        "Live smoke must prove provider success, not fallback. stdout: {} stderr: {}",
+        stdout,
+        stderr
+    );
     // No raw API key in output
     let api_key = env::var("OPENROUTER_API_KEY").unwrap_or_default();
     if !api_key.is_empty() {
