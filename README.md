@@ -154,6 +154,27 @@ OpenRouter support is added as an explicit provider adapter implementing
 - Provider output still goes through IntentLayer parser and invention guard
 - No live API calls unless explicitly configured
 
+## CLI LLM Mode
+
+LLM-assisted compilation is an explicit opt-in. Default mode remains local.
+
+```bash
+# Local (default)
+intentlayer --prompt "fix parser bug"
+intentlayer --prompt "fix parser bug" --compiled-only
+
+# LLM mode (requires openrouter-http feature + runtime API key)
+intentlayer --prompt "fix parser bug" --llm --provider openrouter --api-key-env OPENROUTER_API_KEY
+intentlayer --prompt "fix parser bug" --llm --provider openrouter --api-key-env OPENROUTER_API_KEY --compiled-only
+```
+
+- `--llm` enables LLM mode
+- `--provider openrouter` selects OpenRouter
+- `--api-key-env` specifies env var name — never a raw key
+- OpenRouter requires `openrouter-http` feature gate
+- API key must come from env — no raw key CLI arg
+- `--compiled-only` works with LLM mode
+
 ## Feature-Gated OpenRouter HTTP Transport
 
 Real OpenRouter HTTP transport exists only behind the `openrouter-http`
