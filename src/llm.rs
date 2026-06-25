@@ -76,7 +76,7 @@ pub struct LlmEnvelopeOptions {
 }
 
 /// Result of building an LLM envelope.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum LlmEnvelopeBuildResult {
     /// Normal envelope for upstream LLM.
     Envelope(LlmPromptEnvelope),
@@ -85,6 +85,19 @@ pub enum LlmEnvelopeBuildResult {
         prompt: String,
         warnings: Vec<String>,
     },
+}
+
+impl std::fmt::Debug for LlmEnvelopeBuildResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LlmEnvelopeBuildResult::Envelope(env) => f.debug_tuple("Envelope").field(env).finish(),
+            LlmEnvelopeBuildResult::LocalSecretPassthrough { warnings, .. } => f
+                .debug_struct("LocalSecretPassthrough")
+                .field("prompt", &"[REDACTED_LOCAL_SECRET_PASSTHROUGH]")
+                .field("warnings", warnings)
+                .finish(),
+        }
+    }
 }
 
 /// The safe instruction envelope sent to a future LLM provider.
@@ -568,5 +581,52 @@ mod tests {
         assert!(env.instruction.to_lowercase().contains("rewrite"));
         assert!(env.instruction.to_lowercase().contains("never invent"));
         assert!(env.instruction.to_lowercase().contains("do not execute"));
+    }
+
+    // ── Debug redaction tests ──────────────────────────────────
+
+    #[test]
+    fn test_local_passthrough_debug_does_not_expose_prompt() {
+        let result = LlmEnvelopeBuildResult::LocalSecretPassthrough {
+            prompt: "MY_TOKEN=fake_value".into(),
+            warnings: vec!["bypass".into()],
+        };
+        let debug = format!("{:?}", result);
+        assert!(
+            !debug.contains("fake_value"),
+            "Debug must not expose raw prompt: {}",
+            debug
+        );
+        assert!(
+            debug.contains("[REDACTED_LOCAL_SECRET_PASSTHROUGH]"),
+            "Must show redacted marker"
+        );
+    }
+
+    #[test]
+    fn test_envelope_debug_still_works_no_secrets() {
+        let env = envelope("fix this repo", "repair_debug");
+        let debug = format!("{:?}", env);
+        assert!(
+            debug.contains("fix this repo"),
+            "Normal envelope debug should still work"
+        );
+    }
+
+    #[test]
+    fn test_passthrough_prompt_field_still_returns_raw() {
+        let result = LlmEnvelopeBuildResult::LocalSecretPassthrough {
+            prompt: "MY_TOKEN=fake_value".into(),
+            warnings: vec![],
+        };
+        match result {
+            LlmEnvelopeBuildResult::LocalSecretPassthrough { prompt, .. } => {
+                assert_eq!(
+                    prompt, "MY_TOKEN=fake_value",
+                    "Raw prompt must be accessible via field"
+                );
+            }
+            _ => panic!("Expected LocalSecretPassthrough"),
+        }
     }
 }
