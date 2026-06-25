@@ -288,8 +288,12 @@ fn main() {
             eprintln!("Error: --llm requires --provider openrouter");
             process::exit(1);
         }
-        if args.api_key_env.is_none() {
-            eprintln!("Error: --llm requires --api-key-env <ENV_VAR_NAME>");
+        let p = args.provider.as_deref().unwrap();
+        if p != "openrouter" {
+            eprintln!(
+                "Error: unsupported LLM provider '{}'. Supported providers: openrouter",
+                p
+            );
             process::exit(1);
         }
     }
@@ -310,13 +314,23 @@ fn main() {
         }
     };
 
-    // Classification for local or LLM mode
+    // Classification — must run before deciding LLM path
     let classification = {
         let rules = &compiler.rules;
         intentlayer::classifier::classify(&prompt_text, rules)
     };
 
-    let output = if args.llm && args.provider.as_deref() == Some("openrouter") {
+    let llm_eligible = args.llm
+        && args.provider.as_deref() == Some("openrouter")
+        && classification.mode == intentlayer::classifier::Mode::LlmCompile;
+
+    // Only require API key when an actual LLM call will be made
+    if llm_eligible && args.api_key_env.is_none() {
+        eprintln!("Error: --llm requires --api-key-env <ENV_VAR_NAME>");
+        process::exit(1);
+    }
+
+    let output = if llm_eligible {
         run_llm_openrouter(&prompt_text, &classification.category, &args)
     } else {
         compiler.compile_prompt(&prompt_text)
