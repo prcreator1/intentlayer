@@ -1,0 +1,1 @@
+{"original_prompt":"fix this bug","compiled_prompt":"Using the current error/log/project context, identify the root cause. Apply the smallest safe fix, verify where practical, and report the cause, files changed, and checks performed.","mode":"local_compile","category":"repair_debug","changed":true,"warnings":[]}
