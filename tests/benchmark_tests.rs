@@ -877,4 +877,41 @@ mod tests {
             );
         }
     }
+
+    // ── Precedence: specific phrases beat generic keywords ──────────
+
+    #[test]
+    fn test_specific_phrases_beat_generic_keywords() {
+        let compiler = build_compiler();
+        let cases: &[(&str, &str)] = &[
+            ("review this PR", "commit_push_review"),
+            ("clean up auth module", "refactor_cleanup"),
+            ("explain this error", "documentation_explanation"),
+            ("add rate limiting", "security_permissions_auth"),
+            ("add logging", "production_readiness_hardening"),
+            ("add payment", "feature_implementation"),
+            ("set up CI", "deployment_config_environment"),
+            ("design the system", "architecture_planning"),
+        ];
+        for (prompt, expected) in cases {
+            let input = intentlayer::compiler::CompileInput {
+                prompt: prompt.to_string(),
+            };
+            let output = intentlayer::compiler::compile(&input, &compiler);
+            assert_eq!(
+                output.category, *expected,
+                "Specific phrase '{}' should route to {}: got {}",
+                prompt, expected, output.category
+            );
+        }
+        let input = intentlayer::compiler::CompileInput {
+            prompt: "design the system".to_string(),
+        };
+        let output = intentlayer::compiler::compile(&input, &compiler);
+        assert_eq!(
+            output.mode, "llm_compile",
+            "'design the system' should be llm_compile, got {}",
+            output.mode
+        );
+    }
 }
