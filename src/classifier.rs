@@ -70,7 +70,6 @@ const CONTINUATION_PHRASES: &[Phrase] = &[
         Mode::MinimalCompile,
     ),
     ("step 3", "continuation_previous_plan", Mode::LocalCompile),
-    ("phase", "continuation_previous_plan", Mode::LocalCompile),
 ];
 
 // ── Compound phrase tables (specific → beats generic) ──────────────
@@ -516,6 +515,9 @@ const ARCH_GENERIC: &[Phrase] = &[
 
 const DEPLOY_GENERIC: &[Phrase] = &[("migrate", "deployment_config_environment", Mode::LlmCompile)];
 
+const CONTINUATION_GENERIC: &[Phrase] =
+    &[("phase", "continuation_previous_plan", Mode::LocalCompile)];
+
 // ── Combined maps (preserving specificity precedence) ──────────────
 
 /// Specific compound phrases — checked before generic keywords.
@@ -556,6 +558,7 @@ fn generic_keywords() -> Vec<Phrase> {
         DOCS_GENERIC,
         ARCH_GENERIC,
         DEPLOY_GENERIC,
+        CONTINUATION_GENERIC,
     ]
     .concat()
 }
