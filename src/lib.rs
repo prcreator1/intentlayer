@@ -6,6 +6,7 @@
 pub mod classifier;
 pub mod compiler;
 pub mod guard;
+pub mod llm;
 pub mod rules;
 
 pub use compiler::{compile, CompileInput, CompileOutput, Compiler};
