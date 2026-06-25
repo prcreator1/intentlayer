@@ -112,6 +112,20 @@ services / tools / files / scope.
 {"compiled_prompt": "...", "warnings": []}
 ```
 
+## LLM Output Parsing and Repair
+
+Upstream model output is never trusted blindly. The parser handles:
+
+- **Strict JSON** — exact contract match
+- **Fenced JSON** — extracts from ` ```json ... ``` ` blocks
+- **Prose-wrapped** — finds first JSON object in surrounding text
+- **Missing warnings** — repairs to empty warnings + parser note
+- **Alias keys** — `prompt` or `output` repaired to `compiled_prompt`
+- **Bare text** — accepted as best-effort with warnings (if safe)
+- **Invalid/empty** — falls back to a safe local prompt
+
+No second LLM call is made during repair. No network.
+
 ## Runtime LLM Provider Config
 
 Future LLM providers are configured at runtime. Raw API keys are read from

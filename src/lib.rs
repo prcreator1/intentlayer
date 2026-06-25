@@ -8,6 +8,7 @@ pub mod compiler;
 pub mod guard;
 pub mod llm;
 pub mod llm_config;
+pub mod llm_parser;
 pub mod rules;
 
 pub use compiler::{compile, CompileInput, CompileOutput, Compiler};

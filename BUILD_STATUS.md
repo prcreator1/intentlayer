@@ -139,6 +139,9 @@ tests/
 
 **Post-review patch:** Codex P2 #1 fixed (JSON response instruction). Codex P2 #2 fixed (secret redaction before LLM envelope). Local secret passthrough added (marker + explicit unsafe opt-in). Raw secrets never sent to upstream LLM envelope. Normal quotes are not a bypass. 10 new envelope/redaction/passthrough tests.
 
+
+**Post-review patch:** all fallback paths now preserve original_prompt. Prose-wrapped JSON extraction is string-aware (handles /users/{id}, escaped quotes). 9 new tests added (5 fallback + 4 extraction).
+
 ### Test Results
 
 ```
@@ -537,3 +540,30 @@ a safe fallback.
 
 ### Test Results
 **96 tests: 96 passed, 0 failed, 0 ignored**
+
+---
+
+## Phase 015 — LLM Output Parser
+
+### What Changed
+- New `src/llm_parser.rs` module: `parse_llm_response()` with `LlmParseOutcome`
+  enum (Parsed, Repaired, BestEffort, Fallback).
+- Parser handles: strict JSON, fenced JSON, prose-wrapped JSON, bare text,
+  missing warnings, alias keys (prompt/output → compiled_prompt),
+  empty/invalid output fallback.
+- Safety validation: `validate_compiled_prompt()` rejects empty prompts,
+  meta-commentary ("as an AI..."), and excessive length.
+- README: LLM Output Parsing and Repair section.
+- 26 parser tests covering all parse/repair/fallback paths.
+
+### Real LLM Calls Enabled?
+**No.** No external API calls. No network. No OAuth.
+
+### Safety Rules
+- Upstream model output is never trusted blindly
+- Parser never executes code, runs commands, or makes network calls
+- Fallback preserves user intent without invention
+- No second LLM call during repair
+
+### Test Results
+**125 tests: 125 passed, 0 failed, 0 ignored**
