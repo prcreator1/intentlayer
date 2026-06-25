@@ -262,3 +262,50 @@ fn test_no_input_produces_error() {
     let output = run_with_stdin(&[], "");
     assert!(!output.status.success(), "No input should exit non-zero");
 }
+
+#[test]
+fn test_version_flag() {
+    let output = run(&["--version"]);
+    assert!(output.status.success(), "--version should exit 0");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let expected = format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+    assert_eq!(
+        stdout.trim(),
+        expected,
+        "--version should match Cargo metadata"
+    );
+}
+
+#[test]
+fn test_help_mentions_version() {
+    let output = run(&["--help"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("--version"),
+        "--help should mention --version"
+    );
+}
+
+#[test]
+fn test_help_mentions_stdin() {
+    let output = run(&["--help"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.to_lowercase().contains("stdin"),
+        "--help should mention stdin JSON usage"
+    );
+}
+
+#[test]
+fn test_release_invocation_with_prompt() {
+    let output = run(&["--prompt", "fix this release bug", "--json"]);
+    assert!(
+        output.status.success(),
+        "Release-style invocation should exit 0"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("compiled_prompt"),
+        "Release-style invocation should produce valid JSON"
+    );
+}

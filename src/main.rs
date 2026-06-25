@@ -5,6 +5,8 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process;
 
+const VERSION: &str = concat!(env!("CARGO_PKG_NAME"), " ", env!("CARGO_PKG_VERSION"));
+
 const HELP_TEXT: &str = "\
 Usage:
   intentlayer --prompt \"fix this repo\"
@@ -12,6 +14,7 @@ Usage:
   intentlayer --rules-path path/to/rules.json [--prompt ... | --input ...]
   intentlayer --pretty
   intentlayer --json
+  intentlayer --version
   intentlayer --help
 
 Options:
@@ -22,6 +25,7 @@ Options:
                         Default: research/transformation_rules.json
   --pretty              Output pretty-printed JSON (default).
   --json                Output compact JSON.
+  --version             Print version and exit.
   --help                Show this help and exit.
 
 When neither --prompt nor --input is provided, JSON is read from stdin.
@@ -47,6 +51,10 @@ fn parse_args() -> Result<Args, String> {
         match args[i].as_str() {
             "--help" | "-h" => {
                 print!("{}", HELP_TEXT);
+                process::exit(0);
+            }
+            "--version" => {
+                println!("{}", VERSION);
                 process::exit(0);
             }
             "--pretty" => {

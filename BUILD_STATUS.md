@@ -368,3 +368,23 @@ the concatenation order in `specific_phrases()` and `generic_keywords()`.
 
 ### Test Totals
 **42 tests: 42 passed, 0 failed, 0 ignored**
+
+---
+
+## Phase 009 — CLI Packaging and Release Readiness
+
+### What Changed
+- Added `--version` flag (uses `CARGO_PKG_NAME` / `CARGO_PKG_VERSION`)
+- Updated `--help` to list `--version` and mention stdin JSON usage
+- Added CLI tests: `--version`, `--help` mentions version/stdin,
+  release-style `--prompt` invocation
+- README: added Local Install / Build section with `cargo build --release`
+  and release binary usage, plus future GitHub Release artifacts plan
+
+### Test Results
+**46 tests: 46 passed, 0 failed, 0 ignored**
+
+### Known Limitations
+- No actual release automation (GitHub Actions release workflow)
+- No cross-compilation setup yet
+- Binary size not yet optimized
