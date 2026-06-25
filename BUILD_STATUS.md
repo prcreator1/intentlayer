@@ -599,3 +599,26 @@ is explicit opt-in via `compile_with_llm_orchestration()`.
 
 ### Test Results
 **146 tests: 146 passed, 0 failed, 0 ignored**
+
+---
+
+## Phase 017 — OpenRouter Provider Adapter
+
+### What Changed
+- New `src/openrouter.rs`: OpenRouter provider adapter implementing `LlmProvider`.
+  Includes transport trait, request builder, mock transport, and full request
+  construction from `LlmCompileRequest`.
+- Structured output JSON schema requested: `{"compiled_prompt":"string","warnings":["string"]}`
+- `provider.require_parameters = true` for correct model routing
+- README: OpenRouter Provider Adapter section.
+- 18 unit tests for request construction, error handling, and transport.
+
+### Safety
+- API keys read from runtime config only — never stored, printed, or committed
+- API keys never appear in Debug or error messages
+- Provider receives the redacted safety envelope from Phase 014 orchestration
+- Provider output still goes through Phase 015 parser and Phase 016 invention guard
+- No live API calls in tests — mock transport only
+
+### Test Results
+**164 tests: 164 passed, 0 failed, 0 ignored**

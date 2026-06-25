@@ -141,6 +141,19 @@ Orchestration flow:
 
 Provider output is never trusted directly — it goes through the parser.
 
+## OpenRouter Provider Adapter
+
+OpenRouter support is added as an explicit provider adapter implementing
+`LlmProvider`. Default compile remains local/deterministic.
+
+- API keys are read from environment through runtime config only
+- API keys are never stored, printed, or committed
+- Provider receives the redacted safety envelope (Phase 014)
+- Structured output JSON schema requested for `compiled_prompt` + `warnings`
+- `provider.require_parameters` enabled for correct routing
+- Provider output still goes through IntentLayer parser and invention guard
+- No live API calls unless explicitly configured
+
 ## Runtime LLM Provider Config
 
 Future LLM providers are configured at runtime. Raw API keys are read from
