@@ -41,17 +41,17 @@ pub fn parse_llm_response(raw: &str, original_prompt: &str) -> LlmParseOutcome {
     }
 
     // 1. Try strict JSON
-    if let Some(outcome) = try_strict_json(trimmed) {
+    if let Some(outcome) = try_strict_json(trimmed, original_prompt) {
         return outcome;
     }
 
     // 2. Try fenced JSON (```json ... ```)
-    if let Some(outcome) = try_fenced_json(trimmed) {
+    if let Some(outcome) = try_fenced_json(trimmed, original_prompt) {
         return outcome;
     }
 
     // 3. Try first JSON object in prose
-    if let Some(outcome) = try_first_json_object(trimmed) {
+    if let Some(outcome) = try_first_json_object(trimmed, original_prompt) {
         return outcome;
     }
 
@@ -77,12 +77,15 @@ fn fallback(reason: &str, original_prompt: &str) -> LlmParseOutcome {
     }
 }
 
-fn try_strict_json(text: &str) -> Option<LlmParseOutcome> {
+fn try_strict_json(text: &str, original_prompt: &str) -> Option<LlmParseOutcome> {
     let parsed: Result<LlmResponseContract, _> = serde_json::from_str(text);
     match parsed {
         Ok(resp) => {
             if resp.compiled_prompt.trim().is_empty() {
-                return Some(fallback("LLM response had empty compiled_prompt", ""));
+                return Some(fallback(
+                    "LLM response had empty compiled_prompt after repair",
+                    original_prompt,
+                ));
             }
             if looks_like_meta_commentary(&resp.compiled_prompt) {
                 return Some(LlmParseOutcome::Repaired {
@@ -96,14 +99,14 @@ fn try_strict_json(text: &str) -> Option<LlmParseOutcome> {
     }
 }
 
-fn try_fenced_json(text: &str) -> Option<LlmParseOutcome> {
+fn try_fenced_json(text: &str, original_prompt: &str) -> Option<LlmParseOutcome> {
     let lower = text.to_lowercase();
     let fence = "```json";
     if let Some(start) = lower.find(fence) {
         let after = &text[start + fence.len()..];
         if let Some(end) = after.find("```") {
             let inner = after[..end].trim();
-            return try_strict_json(inner);
+            return try_strict_json(inner, original_prompt);
         }
     }
     // Try plain ``` fence
@@ -113,21 +116,28 @@ fn try_fenced_json(text: &str) -> Option<LlmParseOutcome> {
         let after = after.trim_start_matches(|c: char| c.is_alphanumeric());
         if let Some(end) = after.find("```") {
             let inner = after[..end].trim();
-            return try_strict_json(inner);
+            return try_strict_json(inner, original_prompt);
         }
     }
     None
 }
 
-fn try_first_json_object(text: &str) -> Option<LlmParseOutcome> {
-    // Find first '{' and matching '}'
+fn try_first_json_object(text: &str, original_prompt: &str) -> Option<LlmParseOutcome> {
     if let Some(start) = text.find('{') {
         let mut depth = 0i32;
+        let mut in_string = false;
+        let mut escaped = false;
         let mut end = None;
         for (i, ch) in text[start..].char_indices() {
+            if escaped {
+                escaped = false;
+                continue;
+            }
             match ch {
-                '{' => depth += 1,
-                '}' => {
+                '\\' if in_string => escaped = true,
+                '"' => in_string = !in_string,
+                '{' if !in_string => depth += 1,
+                '}' if !in_string => {
                     depth -= 1;
                     if depth == 0 {
                         end = Some(start + i + 1);
@@ -139,18 +149,20 @@ fn try_first_json_object(text: &str) -> Option<LlmParseOutcome> {
         }
         if let Some(e) = end {
             let inner = text[start..e].trim();
-            // Try to parse it, then repair missing keys
-            return try_repair_json(inner);
+            return try_repair_json(inner, original_prompt);
         }
     }
     None
 }
 
-fn try_repair_json(json_str: &str) -> Option<LlmParseOutcome> {
+fn try_repair_json(json_str: &str, original_prompt: &str) -> Option<LlmParseOutcome> {
     // Try as-is first
     if let Ok(resp) = serde_json::from_str::<LlmResponseContract>(json_str) {
         if resp.compiled_prompt.trim().is_empty() {
-            return Some(fallback("LLM response had empty compiled_prompt", ""));
+            return Some(fallback(
+                "LLM response had empty compiled_prompt",
+                original_prompt,
+            ));
         }
         return Some(LlmParseOutcome::Parsed(resp));
     }
@@ -192,7 +204,7 @@ fn try_repair_json(json_str: &str) -> Option<LlmParseOutcome> {
     if prompt.trim().is_empty() {
         return Some(fallback(
             "LLM response had empty compiled_prompt after repair",
-            "",
+            original_prompt,
         ));
     }
 
@@ -449,5 +461,90 @@ mod tests {
     fn test_validate_normal_prompt_ok() {
         let w = validate_compiled_prompt("Fix this bug using existing code");
         assert!(w.is_empty());
+    }
+
+    // ── Issue 1 — fallback preserves original_prompt ─────────────
+
+    #[test]
+    fn test_strict_json_empty_prompt_fallback_includes_original() {
+        let raw = r#"{"compiled_prompt":"","warnings":[]}"#;
+        let result = parse_llm_response(raw, "fix the login bug");
+        let text = extract_prompt(&result).to_string();
+        assert!(
+            text.contains("fix the login bug"),
+            "Fallback must include original prompt: {}",
+            text
+        );
+    }
+
+    #[test]
+    fn test_repaired_json_empty_prompt_fallback_includes_original() {
+        let raw = r#"{"prompt":""}"#;
+        let result = parse_llm_response(raw, "add auth feature");
+        let text = extract_prompt(&result).to_string();
+        assert!(text.contains("add auth feature"));
+    }
+
+    #[test]
+    fn test_fenced_json_empty_prompt_fallback_includes_original() {
+        let raw = "```json\n{\"compiled_prompt\":\"\",\"warnings\":[]}\n```";
+        let result = parse_llm_response(raw, "refactor the parser");
+        let text = extract_prompt(&result).to_string();
+        assert!(text.contains("refactor the parser"));
+    }
+
+    #[test]
+    fn test_prose_wrapped_empty_json_fallback_includes_original() {
+        let raw = "Here you go:\n{\"compiled_prompt\":\"\"}\nDone.";
+        let result = parse_llm_response(raw, "optimize query");
+        let text = extract_prompt(&result).to_string();
+        assert!(text.contains("optimize query"));
+    }
+
+    #[test]
+    fn test_fallback_never_ends_with_empty_original_prompt_block() {
+        let result = parse_llm_response("", "fix the build");
+        let text = extract_prompt(&result).to_string();
+        assert!(
+            !text.ends_with("Original prompt:\n"),
+            "Fallback must not end with empty original block"
+        );
+    }
+
+    // ── Issue 2 — string-aware JSON extraction ──────────────────
+
+    #[test]
+    fn test_prose_with_braces_inside_compiled_prompt_parses() {
+        let raw = "Response:\n{\"compiled_prompt\":\"Update route /users/{id} and preserve constraints.\",\"warnings\":[]}";
+        let result = parse_llm_response(raw, "original");
+        assert!(extract_prompt(&result).contains("/users/{id}"));
+    }
+
+    #[test]
+    fn test_prose_with_escaped_quote_parses() {
+        let raw = "{\"compiled_prompt\":\"Use \\\"sync\\\" mode for this\",\"warnings\":[]}";
+        let result = parse_llm_response(raw, "original");
+        assert!(extract_prompt(&result).contains("sync"));
+    }
+
+    #[test]
+    fn test_prose_with_multiple_strings_and_braces_parses() {
+        let raw = "Here:\n{\"compiled_prompt\":\"Fix {count} items and {total} others.\",\"warnings\":[\"noted\"]}\nDone.";
+        let result = parse_llm_response(raw, "original");
+        assert!(extract_prompt(&result).contains("{count}"));
+        assert!(extract_prompt(&result).contains("{total}"));
+    }
+
+    #[test]
+    fn test_unmatched_json_object_falls_back_safely() {
+        let raw = "{\"compiled_prompt\":\"unclosed";
+        let result = parse_llm_response(raw, "original");
+        match result {
+            LlmParseOutcome::BestEffort { .. } | LlmParseOutcome::Fallback { .. } => {}
+            other => panic!(
+                "Expected BestEffort or Fallback for unmatched JSON: {:?}",
+                other
+            ),
+        }
     }
 }
