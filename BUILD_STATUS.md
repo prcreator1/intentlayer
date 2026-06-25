@@ -175,56 +175,54 @@ test tests::test_token_cap_respected ... ok                    # Token caps
 
 ## Phase 004 — CI and Accuracy Harness
 
-### What Was Added
+### CI Workflow — Blocked by OAuth Scope
 
-#### GitHub Actions CI (`.github/workflows/rust.yml`)
-- `cargo fmt --check`
-- `cargo test`
-- `cargo clippy --all-targets -- -D warnings`
-- `cargo check --locked` (lockfile integrity)
-- `git diff --check` (trailing whitespace, merge conflicts)
-- Triggers on push to `main` / `phase/*` and PRs to `main`
+Attempted to create `.github/workflows/rust.yml`. Result:
 
-#### Lockfile Handling
-- Removed `*.lock` from `.gitignore`
-- Committed `Cargo.lock` (107 lines, up to date with Cargo.toml)
-- `target/` stays ignored
-
-#### Accuracy Report (`test_accuracy_report`)
-Prints during test execution (use `-- --nocapture` to view):
+**`gh api` Contents PUT**: HTTP 404
+**Git push via `gh auth setup-git`**: rejected with:
 ```
-=== IntentLayer Benchmark Accuracy Report ===
-total_records:                100
-mode_accuracy:                100/100 (100.0%)
-category_accuracy:            69/100 (69.0%)  [informational]
-exact_prompt_match:           33/100 (33.0%)  [aspirational]
-
-pass_through exact:           22/22
-minimal_compile exact:        9/9
-local_compile exact:          2/66
-llm_compile exact:            0/3
-==============================================
+refusing to allow an OAuth App to create or update workflow
+`.github/workflows/rust.yml` without `workflow` scope
 ```
 
-Only mode accuracy (100%) and pass_through exact (22/22) are enforced as assertions.
+**Root cause**: the GitHub OAuth token used by this session has scopes
+`gist, read:org, repo` but is **missing the `workflow` scope**.
+GitHub requires explicit `workflow` permission to create/modify files
+under `.github/workflows/`.
 
-#### Test Claim Truthfulness Fixes
-- File header split into enforced (6 checks) vs aspirational/informational (2 checks)
-- `test_proper_noun_brand_terms_not_invented` — correctly labelled as checking only uppercase proper-noun terms
-- `test_output_category_matches_benchmark` — `#[ignore]` with TODO, does not claim enforcement
-- `test_compiled_prompt_matches_expected_for_non_pass_through` — labelled as aspirational, asserts ≥10 not 100%
+**Required action**: re-authenticate with a token that includes the
+`workflow` scope, then push `.github/workflows/rust.yml` via git.
+
+### Accuracy Report (`test_accuracy_report`)
+Prints per-mode accuracy during test execution. Enforces mode_accuracy
+(100/100) and pass_through exact (22/22). Informational: category (69%),
+exact prompt match (33%).
+
+### Lockfile Handling
+`Cargo.lock` committed to repo. `*.lock` removed from `.gitignore`.
+`target/` stays ignored.
+
+### Test Truthfulness
+File header split into enforced vs aspirational/informational.
+Category test `#[ignore]`d. Expected-prompt test aspirational (>=
+10/78). Invention test renamed to accurately reflect uppercase-only check.
+
+### What Was Fixed
+- `clippy -- -D warnings` passes (fixed unused vars, useless_format, from_str rename)
+- `cargo fmt --check` passes
+- Case-insensitive invention guard
+- TODO(v0.1) markers on hardcoded heuristics
 
 ### Current Known Limitations
-- Category accuracy: 69% (classifier uses broad categories; benchmark has granular per-record categories)
-- Local compile exact match: 2/66 (rule templates differ from benchmark expected prompts)
-- Token approximation: whitespace word count, not real tokenizer
-- `llm_compile` is a stub (no real model call)
-- `test_output_category_matches_benchmark` is `#[ignore]`d
+- CI not active until `workflow` scope is added to OAuth token
+- Category accuracy: 69%
+- Local compile exact match: 2/66
+- `llm_compile` is a stub
 
 ### What Remains Next
-- Add .github/workflows/rust.yml (blocked: GitHub Contents API cannot auto-create nested dot-prefixed directories; CI at root/rust-ci.yml for now)
+- Re-auth with `workflow` scope → push `.github/workflows/rust.yml`
 - Real `llm_compile` with LLM API call
 - Precise category routing
 - Real tokenizer
-- Move strict expected_compiled_prompt matching from aspirational to enforced
-- CLI flags
+- Strict expected_compiled_prompt matching
