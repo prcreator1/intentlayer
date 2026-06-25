@@ -168,3 +168,60 @@ test tests::test_token_cap_respected ... ok                    # Token caps
 - Category accuracy testing (currently only mode is checked)
 - Move strict expected_compiled_prompt matching from aspirational test to full test
 - CI (GitHub Actions)
+
+---
+
+## Phase 004 — CI and Accuracy Harness
+
+### What Was Added
+
+#### GitHub Actions CI (`.github/workflows/rust.yml`)
+- `cargo fmt --check`
+- `cargo test`
+- `cargo clippy --all-targets -- -D warnings`
+- `cargo check --locked` (lockfile integrity)
+- `git diff --check` (trailing whitespace, merge conflicts)
+- Triggers on push to `main` / `phase/*` and PRs to `main`
+
+#### Lockfile Handling
+- Removed `*.lock` from `.gitignore`
+- Committed `Cargo.lock` (107 lines, up to date with Cargo.toml)
+- `target/` stays ignored
+
+#### Accuracy Report (`test_accuracy_report`)
+Prints during test execution (use `-- --nocapture` to view):
+```
+=== IntentLayer Benchmark Accuracy Report ===
+total_records:                100
+mode_accuracy:                100/100 (100.0%)
+category_accuracy:            69/100 (69.0%)  [informational]
+exact_prompt_match:           33/100 (33.0%)  [aspirational]
+
+pass_through exact:           22/22
+minimal_compile exact:        9/9
+local_compile exact:          2/66
+llm_compile exact:            0/3
+==============================================
+```
+
+Only mode accuracy (100%) and pass_through exact (22/22) are enforced as assertions.
+
+#### Test Claim Truthfulness Fixes
+- File header split into enforced (6 checks) vs aspirational/informational (2 checks)
+- `test_proper_noun_brand_terms_not_invented` — correctly labelled as checking only uppercase proper-noun terms
+- `test_output_category_matches_benchmark` — `#[ignore]` with TODO, does not claim enforcement
+- `test_compiled_prompt_matches_expected_for_non_pass_through` — labelled as aspirational, asserts ≥10 not 100%
+
+### Current Known Limitations
+- Category accuracy: 69% (classifier uses broad categories; benchmark has granular per-record categories)
+- Local compile exact match: 2/66 (rule templates differ from benchmark expected prompts)
+- Token approximation: whitespace word count, not real tokenizer
+- `llm_compile` is a stub (no real model call)
+- `test_output_category_matches_benchmark` is `#[ignore]`d
+
+### What Remains Next
+- Real `llm_compile` with LLM API call
+- Precise category routing
+- Real tokenizer
+- Move strict expected_compiled_prompt matching from aspirational to enforced
+- CLI flags
