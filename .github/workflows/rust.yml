@@ -27,5 +27,17 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
+      - name: Check no-default-features build
+        run: cargo check --no-default-features
+
+      - name: Check openrouter-http feature build
+        run: cargo check --features openrouter-http
+
+      - name: Run tests (openrouter-http feature)
+        run: cargo test --features openrouter-http
+
+      - name: Clippy (openrouter-http feature)
+        run: cargo clippy --all-targets --features openrouter-http -- -D warnings
+
       - name: Check line endings / trailing whitespace
         run: git diff --check
