@@ -39,6 +39,7 @@ cargo run -- --rules-path research/transformation_rules.json --prompt "fix this 
 | `--rules-path <path>` | Load transformation rules from a JSON file |
 | `--pretty` | Pretty-printed JSON (default) |
 | `--json` | Compact JSON output |
+| `--compiled-only` | Print only compiled_prompt as plain text |
 | `--version` | Print version and exit |
 | `--help` | Show usage and exit |
 
@@ -137,6 +138,26 @@ Example output (`examples/agent_response.json`):
 ```json
 {"original_prompt":"fix this bug","compiled_prompt":"Using the current error/log/project context, identify the root cause. Apply the smallest safe fix, verify where practical, and report the cause, files changed, and checks performed.","mode":"local_compile","category":"repair_debug","changed":true,"warnings":[]}
 ```
+
+### Compiled-Only Handoff
+
+`--compiled-only` prints only the compiled prompt as plain text. This is
+intended for direct handoff to downstream coding agents — they receive
+a clean prompt without JSON metadata.
+
+If `warnings` are non-empty (invented provider names), the warning is
+printed to stderr and the process exits with code 1 without writing to
+stdout.  This prevents wrappers from silently forwarding unsafe output.
+
+```bash
+intentlayer --prompt "fix this bug" --compiled-only
+echo '{"prompt":"fix this bug"}' | intentlayer --compiled-only
+```
+
+**Mode selection:**
+- **JSON mode** — for wrappers / orchestrators that need `mode`, `category`, or `warnings`
+- **compiled-only mode** — for direct downstream-agent handoff
+- downstream agents should consume only stdout from `--compiled-only`
 
 ### Calling Agent Checklist
 

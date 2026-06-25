@@ -417,3 +417,33 @@ original prompt, and check `warnings` for invented provider names.
 
 ### Test Results
 **54 tests: 54 passed, 0 failed, 0 ignored**
+
+---
+
+## Phase 011 — Compiled-Only Agent Handoff
+
+### What Changed
+- Added `--compiled-only` CLI flag: prints only `compiled_prompt` as plain text
+  (no JSON, no metadata). Intended for direct handoff to downstream agents.
+- Warning behavior: if `warnings` is non-empty, the warning is printed to
+  stderr and the process exits with code 1 (no stdout output).
+  Prevents wrappers from silently forwarding unsafe/invented output.
+- `--help` updated to document `--compiled-only`
+- README: new **Compiled-Only Handoff** section under Agent Integration Contract
+- 6 new CLI tests covering compiled-only output, non-JSON format, stdin,
+  help mention, and existing JSON/pretty preservation
+
+### Why
+JSON output is useful for wrappers/orchestrators that need `mode`,
+`category`, or `warnings`. But downstream coding agents should receive
+only the final structured prompt. `--compiled-only` makes this seamless.
+
+### Known Limitations
+- No warning-producing fixture for automated test yet (TODO). The warning
+  exit-code-1 test is deferred until a prompt that triggers invention
+  warnings can be constructed reliably.
+- Compiled-only does not strip trailing whitespace or newlines from the
+  compiled prompt.
+
+### Test Results
+**60 tests: 60 passed, 0 failed, 0 ignored**
