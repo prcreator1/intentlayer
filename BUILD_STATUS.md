@@ -579,8 +579,7 @@ a safe fallback.
 - New `src/llm_orchestrate.rs`: `compile_with_llm_orchestration()` wires
   safety envelope (Phase 014), provider trait, and parser (Phase 015) into
   one controlled path.
-- 5 mock providers for testing: ReturnsJson, ReturnsFencedJson,
-  ReturnsBareText, ReturnsEmpty, Fails.
+- 7 mock providers for testing: ReturnsJson, ReturnsFencedJson, ReturnsBareText, ReturnsEmpty, Fails, InventsStripe, InspectsRequest.
 - README: LLM Compile Orchestration section.
 - 21 orchestration tests covering all paths.
 
