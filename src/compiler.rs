@@ -61,7 +61,7 @@ impl Compiler {
             }
         };
 
- // Invention guard
+        // Invention guard
         let warnings = check_invention(prompt, &compiled_prompt);
 
         // Check for forbidden clarification questions
@@ -90,7 +90,11 @@ impl Compiler {
     }
 
     /// minimal_compile: small 1-15 token expansion.
-    fn apply_minimal_compile(&self, prompt: &str, classification: &crate::classifier::Classification) -> String {
+    fn apply_minimal_compile(
+        &self,
+        prompt: &str,
+        classification: &crate::classifier::Classification,
+    ) -> String {
         let lower = prompt.to_lowercase();
 
         // Check for specific tiny prompts that need minimal expansion
@@ -103,7 +107,9 @@ impl Compiler {
             "do what we discussed" => "Proceed with discussed plan.".to_string(),
             "same plan continue" => "Continue existing plan.".to_string(),
             "i think i have broken you" => "Continue normally.".to_string(),
-            "same issue as before" => "Re-apply previous fix. Adjust if context changed.".to_string(),
+            "same issue as before" => {
+                "Re-apply previous fix. Adjust if context changed.".to_string()
+            }
             _ => {
                 if classification.category == "continuation_previous_plan" {
                     format!("Continue from current context: {}", prompt)
@@ -119,7 +125,7 @@ impl Compiler {
     /// local_compile: category-based rewrite using rule templates.
     fn apply_local_compile(
         &self,
-        prompt: &str,
+        _prompt: &str,
         classification: &crate::classifier::Classification,
     ) -> String {
         // Find the matching rule
@@ -142,9 +148,7 @@ impl Compiler {
         }
 
         // Generic fallback
-        format!(
-            "Using the current project context, implement the requested change. Make the smallest safe change, verify where practical, and report files changed."
-        )
+        "Using the current project context, implement the requested change. Make the smallest safe change, verify where practical, and report files changed.".to_string()
     }
 
     /// llm_compile stub: no real model call yet.
@@ -171,7 +175,7 @@ impl Compiler {
     fn check_clarification(
         &self,
         compiled: &str,
-        classification: &crate::classifier::Classification,
+        _classification: &crate::classifier::Classification,
     ) -> Option<String> {
         let lower = compiled.to_lowercase();
 

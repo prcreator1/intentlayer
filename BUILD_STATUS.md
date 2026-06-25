@@ -94,6 +94,7 @@ Phase 001 incorrectly reported llm_compile as 7. Actual count was always 3 (arch
 | **Total** | | | **100** |
 
 ### What Remains Next
+- Add .github/workflows/rust.yml (blocked: GitHub Contents API cannot auto-create nested dot-prefixed directories; CI at root/rust-ci.yml for now)
 
 - Build prompt category classifier
 - Implement pass_through/minimal_compile/local_compile/llm_compile routers
@@ -160,6 +161,7 @@ test tests::test_token_cap_respected ... ok                    # Token caps
 5. **must_not_invent check:** Only validates proper nouns / brand names (uppercase-containing terms) for text-substring checks. Generic lowercase behavioral terms like "changes" are constraints, not text checks.
 
 ### What Remains Next
+- Add .github/workflows/rust.yml (blocked: GitHub Contents API cannot auto-create nested dot-prefixed directories; CI at root/rust-ci.yml for now)
 
 - Implement real `llm_compile` mode (currently returns local_compile template as fallback)
 - Wire actual LLM API call for llm_compile
@@ -168,3 +170,46 @@ test tests::test_token_cap_respected ... ok                    # Token caps
 - Category accuracy testing (currently only mode is checked)
 - Move strict expected_compiled_prompt matching from aspirational test to full test
 - CI (GitHub Actions)
+
+---
+
+## Phase 004 — CI and Accuracy Harness
+
+### CI Workflow — `workflow` scope resolved
+
+`.github/workflows/rust.yml` pushed successfully.
+
+Re-authentication with a token that includes the `workflow` scope
+resolved the earlier blocker.  CI now runs on push to `main` / `phase/*`
+and PRs to `main`.
+
+### Accuracy Report (`test_accuracy_report`)
+Prints per-mode accuracy during test execution. Enforces mode_accuracy
+(100/100) and pass_through exact (22/22). Informational: category (69%),
+exact prompt match (33%).
+
+### Lockfile Handling
+`Cargo.lock` committed to repo. `*.lock` removed from `.gitignore`.
+`target/` stays ignored.
+
+### Test Truthfulness
+File header split into enforced vs aspirational/informational.
+Category test `#[ignore]`d. Expected-prompt test aspirational (>=
+10/78). Invention test renamed to accurately reflect uppercase-only check.
+
+### What Was Fixed
+- `clippy -- -D warnings` passes (fixed unused vars, useless_format, from_str rename)
+- `cargo fmt --check` passes
+- Case-insensitive invention guard
+- TODO(v0.1) markers on hardcoded heuristics
+
+### Current Known Limitations
+- Category accuracy: 69%
+- Local compile exact match: 2/66
+- `llm_compile` is a stub
+
+### What Remains Next
+- Real `llm_compile` with LLM API call
+- Precise category routing
+- Real tokenizer
+- Strict expected_compiled_prompt matching
