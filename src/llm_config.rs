@@ -71,6 +71,8 @@ pub enum LlmConfigError {
     MissingEnvVar(String),
     /// The env var was set but empty.
     EmptyEnvVar(String),
+    /// api_key_env value is not a valid env-var name.
+    InvalidEnvVarName,
 }
 
 impl std::fmt::Display for LlmConfigError {
@@ -82,8 +84,42 @@ impl std::fmt::Display for LlmConfigError {
             LlmConfigError::EmptyEnvVar(name) => {
                 write!(f, "Environment variable '{}' is set but empty", name)
             }
+            LlmConfigError::InvalidEnvVarName => {
+                write!(
+                    f,
+                    "Invalid API key environment variable name: value redacted"
+                )
+            }
         }
     }
+}
+
+// ── Validation ───────────────────────────────────────────────────────
+
+/// Validate that a string is a plausible env-var name, not a raw key.
+///
+/// Rules:
+/// - Non-empty
+/// - Starts with ASCII letter or `_`
+/// - Remaining chars: ASCII letters, digits, `_`
+/// - Rejects values containing `-`, `.`, spaces, `=`, `/`, `:`, or any
+///   byte outside ASCII alphanumeric + `_`
+fn is_valid_env_var_name(name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+    let bytes = name.as_bytes();
+    // First char: letter or underscore
+    if !bytes[0].is_ascii_alphabetic() && bytes[0] != b'_' {
+        return false;
+    }
+    // Remainder: letters, digits, underscore only
+    for &b in &bytes[1..] {
+        if !b.is_ascii_alphanumeric() && b != b'_' {
+            return false;
+        }
+    }
+    true
 }
 
 // ── Runtime resolution ───────────────────────────────────────────────
@@ -95,6 +131,9 @@ pub fn resolve_from_env(
 ) -> Result<ResolvedLlmProviderConfig, LlmConfigError> {
     let api_key = match &config.api_key_env {
         Some(env_name) => {
+            if !is_valid_env_var_name(env_name) {
+                return Err(LlmConfigError::InvalidEnvVarName);
+            }
             let val =
                 env::var(env_name).map_err(|_| LlmConfigError::MissingEnvVar(env_name.clone()))?;
             let trimmed = val.trim().to_string();
@@ -260,5 +299,85 @@ mod tests {
         };
         let provider = crate::llm::NoopLlmCompiler;
         assert!(provider.compile(&req).is_err());
+    }
+
+    #[test]
+    fn test_api_key_env_rejects_raw_key_with_hyphen() {
+        let cfg = LlmProviderConfig {
+            api_key_env: Some("sk-raw-secret-key".into()),
+            ..ollama_config()
+        };
+        let err = resolve_from_env(&cfg).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            !msg.contains("sk-"),
+            "Error must not expose raw value: {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn test_api_key_env_rejects_value_with_spaces() {
+        let cfg = LlmProviderConfig {
+            api_key_env: Some("my key with spaces".into()),
+            ..ollama_config()
+        };
+        assert!(resolve_from_env(&cfg).is_err(), "Spaces should reject");
+    }
+
+    #[test]
+    fn test_api_key_env_rejects_value_with_equals_sign() {
+        let cfg = LlmProviderConfig {
+            api_key_env: Some("KEY=value".into()),
+            ..ollama_config()
+        };
+        assert!(resolve_from_env(&cfg).is_err(), "Equals sign should reject");
+    }
+
+    #[test]
+    fn test_invalid_api_key_env_error_redacts_raw_value() {
+        let cfg = LlmProviderConfig {
+            api_key_env: Some("abc-xyz-123".into()),
+            ..ollama_config()
+        };
+        let err = resolve_from_env(&cfg).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            !msg.contains("abc-xyz-123"),
+            "Error must redact invalid value: {}",
+            msg
+        );
+        let debug = format!("{:?}", err);
+        assert!(
+            !debug.contains("abc-xyz-123"),
+            "Debug must redact invalid value: {}",
+            debug
+        );
+    }
+
+    #[test]
+    fn test_valid_env_var_name_still_resolves() {
+        env::set_var("INTENTLAYER_VALID_TEST", "my-secret");
+        let cfg = LlmProviderConfig {
+            api_key_env: Some("INTENTLAYER_VALID_TEST".into()),
+            ..ollama_config()
+        };
+        let resolved = resolve_from_env(&cfg).expect("Should resolve");
+        assert_eq!(resolved.api_key.as_deref(), Some("my-secret"));
+        env::remove_var("INTENTLAYER_VALID_TEST");
+    }
+
+    #[test]
+    fn test_missing_valid_env_var_returns_missing_with_name() {
+        let cfg = LlmProviderConfig {
+            api_key_env: Some("INTENTLAYER_MISSING_TEST".into()),
+            ..ollama_config()
+        };
+        let err = resolve_from_env(&cfg).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("INTENTLAYER_MISSING_TEST"),
+            "Error should name the env var"
+        );
     }
 }
