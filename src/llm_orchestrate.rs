@@ -15,22 +15,23 @@ use crate::llm_parser::{parse_llm_response, LlmParseOutcome};
 ///
 /// 1. Build safety envelope (Phase 014)
 /// 2. Respect local secret passthrough
-/// 3. Call provider trait (no real API)
-/// 4. Parse provider output (Phase 015)
-/// 5. Fallback locally on failure
+/// 3. Call provider trait with full envelope (Issue 3 fix)
+/// 4. Parse provider output using redacted prompt for fallback (Issue 1 fix)
+/// 5. Run invention guard on final output (Issue 2 fix)
 pub fn compile_with_llm_orchestration(
-    original_prompt: &str,
+    raw_original_prompt: &str,
     category: &str,
     provider: &dyn LlmProvider,
     envelope_options: &LlmEnvelopeOptions,
 ) -> CompileOutput {
     // 1. Build envelope
-    let envelope_result = build_llm_prompt_envelope(original_prompt, category, envelope_options);
+    let envelope_result =
+        build_llm_prompt_envelope(raw_original_prompt, category, envelope_options);
 
     match envelope_result {
         // Local secret passthrough — bypasses provider entirely
         LlmEnvelopeBuildResult::LocalSecretPassthrough { prompt, warnings } => CompileOutput {
-            original_prompt: original_prompt.to_string(),
+            original_prompt: raw_original_prompt.to_string(),
             compiled_prompt: prompt,
             mode: "llm_compile".to_string(),
             category: category.to_string(),
@@ -38,43 +39,38 @@ pub fn compile_with_llm_orchestration(
             warnings,
         },
 
-        // Normal envelope — call provider
+        // Normal envelope — call provider with full envelope request
         LlmEnvelopeBuildResult::Envelope(env) => {
             let envelope_warnings = env.warnings.clone();
+            let safe_prompt = env.original_prompt.clone(); // redacted, for fallback
+
             let request = LlmCompileRequest {
                 original_prompt: env.original_prompt,
                 category: env.category,
+                instruction: env.instruction,
+                must_preserve: env.must_preserve,
+                must_not_invent: env.must_not_invent,
             };
 
             // 3. Call provider
             match provider.compile(&request) {
                 Ok(resp) => {
-                    // Provider succeeded — parse output
-                    let parse_result = parse_llm_response(&resp.compiled_prompt, original_prompt);
+                    // 4. Parse output using REDACTED prompt for fallback (Issue 1)
+                    let parse_result = parse_llm_response(&resp.compiled_prompt, &safe_prompt);
 
-                    let (compiled, parse_warnings) = match parse_result {
-                        LlmParseOutcome::Parsed(r) => (r.compiled_prompt, r.warnings),
-                        LlmParseOutcome::Repaired { response, warnings } => {
-                            let mut w = warnings;
-                            w.extend(response.warnings);
-                            (response.compiled_prompt, w)
-                        }
-                        LlmParseOutcome::BestEffort {
-                            compiled_prompt,
-                            warnings,
-                        } => (compiled_prompt, warnings),
-                        LlmParseOutcome::Fallback {
-                            compiled_prompt,
-                            warnings,
-                        } => (compiled_prompt, warnings),
-                    };
+                    let (compiled, parse_warnings) = extract_from_parse(parse_result);
 
                     let mut all_warnings = envelope_warnings;
                     all_warnings.extend(resp.warnings);
                     all_warnings.extend(parse_warnings);
 
+                    // 5. Run invention guard (Issue 2)
+                    let guard_warnings =
+                        crate::guard::check_invention(raw_original_prompt, &compiled);
+                    all_warnings.extend(guard_warnings);
+
                     CompileOutput {
-                        original_prompt: original_prompt.to_string(),
+                        original_prompt: raw_original_prompt.to_string(),
                         compiled_prompt: compiled,
                         mode: "llm_compile".to_string(),
                         category: category.to_string(),
@@ -83,14 +79,14 @@ pub fn compile_with_llm_orchestration(
                     }
                 }
                 Err(_err) => {
-                    // Provider failed — fallback locally
+                    // Provider failed — fallback locally using redacted prompt
                     let mut warnings = envelope_warnings;
                     warnings.push("LLM provider failed; fell back to local compilation".into());
                     CompileOutput {
-                        original_prompt: original_prompt.to_string(),
+                        original_prompt: raw_original_prompt.to_string(),
                         compiled_prompt: format!(
-                            "Using the original prompt in the current project context: {}",
-                            original_prompt
+                            "Using the provided prompt in the current project context: {}",
+                            safe_prompt
                         ),
                         mode: "llm_compile".to_string(),
                         category: category.to_string(),
@@ -100,6 +96,25 @@ pub fn compile_with_llm_orchestration(
                 }
             }
         }
+    }
+}
+
+fn extract_from_parse(parse_result: LlmParseOutcome) -> (String, Vec<String>) {
+    match parse_result {
+        LlmParseOutcome::Parsed(r) => (r.compiled_prompt, r.warnings),
+        LlmParseOutcome::Repaired { response, warnings } => {
+            let mut w = warnings;
+            w.extend(response.warnings);
+            (response.compiled_prompt, w)
+        }
+        LlmParseOutcome::BestEffort {
+            compiled_prompt,
+            warnings,
+        } => (compiled_prompt, warnings),
+        LlmParseOutcome::Fallback {
+            compiled_prompt,
+            warnings,
+        } => (compiled_prompt, warnings),
     }
 }
 
@@ -165,6 +180,47 @@ pub struct MockProviderFails;
 impl LlmProvider for MockProviderFails {
     fn compile(&self, _request: &LlmCompileRequest) -> Result<LlmCompileResponse, LlmError> {
         Err(LlmError::ProviderError("simulated failure".into()))
+    }
+}
+
+/// Mock provider that invents Stripe (for invention guard test).
+pub struct MockProviderInventsStripe;
+
+impl LlmProvider for MockProviderInventsStripe {
+    fn compile(&self, _request: &LlmCompileRequest) -> Result<LlmCompileResponse, LlmError> {
+        Ok(LlmCompileResponse {
+            compiled_prompt: r#"{"compiled_prompt":"Add Stripe payments","warnings":[]}"#.into(),
+            warnings: vec![],
+        })
+    }
+}
+
+/// Mock provider that inspects its request (for safety envelope test).
+pub struct MockProviderInspectsRequest {
+    pub received: std::cell::RefCell<Option<LlmCompileRequest>>,
+}
+
+impl MockProviderInspectsRequest {
+    pub fn new() -> Self {
+        MockProviderInspectsRequest {
+            received: std::cell::RefCell::new(None),
+        }
+    }
+}
+
+impl LlmProvider for MockProviderInspectsRequest {
+    fn compile(&self, request: &LlmCompileRequest) -> Result<LlmCompileResponse, LlmError> {
+        *self.received.borrow_mut() = Some(request.clone());
+        Ok(LlmCompileResponse {
+            compiled_prompt: r#"{"compiled_prompt":"safe prompt","warnings":[]}"#.into(),
+            warnings: vec![],
+        })
+    }
+}
+
+impl Default for MockProviderInspectsRequest {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -354,5 +410,157 @@ mod tests {
             &default_opts(),
         );
         assert!(!output.compiled_prompt.is_empty());
+    }
+
+    // ── Issue 1 — fallback must not re-leak raw secrets ───────────
+
+    #[test]
+    fn test_empty_provider_output_does_not_leak_raw_secret_in_fallback() {
+        let provider = MockProviderReturnsEmpty;
+        let output = compile_with_llm_orchestration(
+            "set OPENAI_API_KEY=sk-secret-123 in config",
+            "deployment_config_environment",
+            &provider,
+            &default_opts(),
+        );
+        assert!(
+            !output.compiled_prompt.contains("sk-secret-123"),
+            "Fallback must not contain raw secret"
+        );
+        assert!(
+            output.compiled_prompt.contains("[REDACTED_SECRET]"),
+            "Fallback should contain redacted marker"
+        );
+    }
+
+    #[test]
+    fn test_provider_failure_fallback_does_not_leak_raw_secret() {
+        let provider = MockProviderFails;
+        let output = compile_with_llm_orchestration(
+            "set MY_TOKEN=abc123 in .env",
+            "deployment_config_environment",
+            &provider,
+            &default_opts(),
+        );
+        assert!(!output.compiled_prompt.contains("abc123"));
+        assert!(output.compiled_prompt.contains("[REDACTED_SECRET]"));
+    }
+
+    #[test]
+    fn test_local_passthrough_still_returns_raw_secret_only_when_optin() {
+        let provider = MockProviderReturnsJson;
+        let opts = LlmEnvelopeOptions {
+            allow_local_secret_passthrough: true,
+        };
+        let output = compile_with_llm_orchestration(
+            "[[INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]\nuse TOKEN=mysecret\n[[/INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]",
+            "deployment_config_environment",
+            &provider,
+            &opts,
+        );
+        assert!(output.compiled_prompt.contains("TOKEN=mysecret"));
+    }
+
+    // ── Issue 2 — invention guard on final LLM output ────────────
+
+    #[test]
+    fn test_provider_invents_stripe_produces_guard_warning() {
+        let provider = MockProviderInventsStripe;
+        let output = compile_with_llm_orchestration(
+            "add payment",
+            "feature_implementation",
+            &provider,
+            &default_opts(),
+        );
+        assert!(
+            output.warnings.iter().any(|w| w.contains("Stripe")),
+            "Must warn about invented Stripe"
+        );
+    }
+
+    #[test]
+    fn test_normal_non_invented_provider_output_has_no_invention_warning() {
+        let provider = MockProviderReturnsJson;
+        let output = compile_with_llm_orchestration(
+            "add payment",
+            "feature_implementation",
+            &provider,
+            &default_opts(),
+        );
+        // No Stripe warning expected
+        assert!(!output.warnings.iter().any(|w| w.contains("Stripe")));
+    }
+
+    #[test]
+    fn test_default_compile_remains_unchanged_after_invention_guard() {
+        let compiler = make_compiler();
+        let input = crate::compiler::CompileInput {
+            prompt: "add payment".into(),
+        };
+        let output = crate::compiler::compile(&input, &compiler);
+        // Default compile does not invent Stripe
+        assert!(!output.compiled_prompt.contains("Stripe"));
+    }
+
+    // ── Issue 3 — provider receives safety envelope ───────────────
+
+    #[test]
+    fn test_provider_received_json_response_instruction() {
+        let provider = MockProviderInspectsRequest::new();
+        let _ = compile_with_llm_orchestration(
+            "design the system",
+            "architecture_planning",
+            &provider,
+            &default_opts(),
+        );
+        let req = provider.received.borrow();
+        let instruction = &req.as_ref().unwrap().instruction;
+        assert!(
+            instruction.contains("compiled_prompt"),
+            "Provider must receive JSON contract"
+        );
+    }
+
+    #[test]
+    fn test_provider_received_no_invention_constraints() {
+        let provider = MockProviderInspectsRequest::new();
+        let _ = compile_with_llm_orchestration(
+            "add payment",
+            "feature_implementation",
+            &provider,
+            &default_opts(),
+        );
+        let req = provider.received.borrow();
+        assert!(!req.as_ref().unwrap().must_not_invent.is_empty());
+    }
+
+    #[test]
+    fn test_provider_received_preservation_constraints() {
+        let provider = MockProviderInspectsRequest::new();
+        let _ = compile_with_llm_orchestration(
+            "continue from plan",
+            "continuation_previous_plan",
+            &provider,
+            &default_opts(),
+        );
+        let req = provider.received.borrow();
+        assert!(!req.as_ref().unwrap().must_preserve.is_empty());
+    }
+
+    #[test]
+    fn test_provider_did_not_receive_raw_secret() {
+        let provider = MockProviderInspectsRequest::new();
+        let _ = compile_with_llm_orchestration(
+            "use sk-xyz-secret for api",
+            "security_permissions_auth",
+            &provider,
+            &default_opts(),
+        );
+        let req = provider.received.borrow();
+        let prompt = &req.as_ref().unwrap().original_prompt;
+        assert!(
+            !prompt.contains("sk-xyz-secret"),
+            "Provider must not receive raw secret"
+        );
     }
 }
