@@ -94,6 +94,7 @@ Phase 001 incorrectly reported llm_compile as 7. Actual count was always 3 (arch
 | **Total** | | | **100** |
 
 ### What Remains Next
+- Add .github/workflows/rust.yml (blocked: GitHub Contents API cannot auto-create nested dot-prefixed directories; CI at root/rust-ci.yml for now)
 
 - Build prompt category classifier
 - Implement pass_through/minimal_compile/local_compile/llm_compile routers
@@ -160,6 +161,7 @@ test tests::test_token_cap_respected ... ok                    # Token caps
 5. **must_not_invent check:** Only validates proper nouns / brand names (uppercase-containing terms) for text-substring checks. Generic lowercase behavioral terms like "changes" are constraints, not text checks.
 
 ### What Remains Next
+- Add .github/workflows/rust.yml (blocked: GitHub Contents API cannot auto-create nested dot-prefixed directories; CI at root/rust-ci.yml for now)
 
 - Implement real `llm_compile` mode (currently returns local_compile template as fallback)
 - Wire actual LLM API call for llm_compile
@@ -220,6 +222,7 @@ Only mode accuracy (100%) and pass_through exact (22/22) are enforced as asserti
 - `test_output_category_matches_benchmark` is `#[ignore]`d
 
 ### What Remains Next
+- Add .github/workflows/rust.yml (blocked: GitHub Contents API cannot auto-create nested dot-prefixed directories; CI at root/rust-ci.yml for now)
 - Real `llm_compile` with LLM API call
 - Precise category routing
 - Real tokenizer
