@@ -148,12 +148,7 @@ mod tests {
         }
     }
 
-    // TODO(v0.1): Enable once classifier uses precise per-record category
-    // routing.  Currently the classifier picks broad categories (e.g. all
-    // "add" prompts → feature_implementation) which differ from the
-    // benchmark's more granular per-record categories.
     #[test]
-    #[ignore]
     fn test_output_category_matches_benchmark() {
         let compiler = build_compiler();
         let records = load_benchmarks();
@@ -518,6 +513,324 @@ mod tests {
             pt_exact, pt_total,
             "All pass_through records must return exact original: got {}/{}",
             pt_exact, pt_total
+        );
+    }
+
+    // ── Focused classifier tests ──
+
+    #[test]
+    fn test_slash_commands_still_pass_through() {
+        let compiler = build_compiler();
+        for cmd in &["/help", "/clear", "/model", "/init", "/permissions"] {
+            let input = intentlayer::compiler::CompileInput {
+                prompt: cmd.to_string(),
+            };
+            let output = intentlayer::compiler::compile(&input, &compiler);
+            assert_eq!(
+                output.mode, "pass_through",
+                "Slash command '{}' must be pass_through",
+                cmd
+            );
+            assert_eq!(
+                output.compiled_prompt, *cmd,
+                "Slash command must be returned unchanged"
+            );
+        }
+    }
+
+    #[test]
+    fn test_already_good_long_prompts_still_pass_through() {
+        let compiler = build_compiler();
+        let long_prompts = [
+            "Fix the race condition in the UserService.create method by adding a distributed lock using Redis. Keep the change minimal and add a test.",
+            "Create a React hook useLocalStorage that syncs state with localStorage. Handle SSR gracefully. Add TypeScript types and unit tests.",
+            "Update the GraphQL schema to add a 'likes' field to the Post type. Create a new resolver and add a database migration for the likes count column.",
+        ];
+        for prompt in &long_prompts {
+            let input = intentlayer::compiler::CompileInput {
+                prompt: prompt.to_string(),
+            };
+            let output = intentlayer::compiler::compile(&input, &compiler);
+            assert_eq!(
+                output.mode, "pass_through",
+                "Long specific prompt must be pass_through: '{}'",
+                prompt
+            );
+            assert_eq!(
+                output.compiled_prompt, *prompt,
+                "Long specific prompt must be returned unchanged"
+            );
+        }
+    }
+
+    #[test]
+    fn test_minimal_compile_prompts_route_correctly() {
+        let compiler = build_compiler();
+        let cases = [
+            ("continue", "minimal_compile", "continuation_previous_plan"),
+            ("resume", "minimal_compile", "continuation_previous_plan"),
+            ("next step", "minimal_compile", "continuation_previous_plan"),
+            ("try again", "minimal_compile", "ambiguous_tiny_command"),
+            ("proceed", "minimal_compile", "ambiguous_tiny_command"),
+        ];
+        for (prompt, mode, category) in &cases {
+            let input = intentlayer::compiler::CompileInput {
+                prompt: prompt.to_string(),
+            };
+            let output = intentlayer::compiler::compile(&input, &compiler);
+            assert_eq!(output.mode, *mode, "Mode mismatch for '{}'", prompt);
+            assert_eq!(
+                output.category, *category,
+                "Category mismatch for '{}'",
+                prompt
+            );
+        }
+    }
+
+    #[test]
+    fn test_common_local_compile_categories_route_correctly() {
+        let compiler = build_compiler();
+        let cases = [
+            ("fix this", "repair_debug"),
+            ("this error is back", "repair_debug"),
+            ("add payment", "feature_implementation"),
+            ("add auth", "feature_implementation"),
+            ("refactor this mess", "refactor_cleanup"),
+            ("clean up this code", "refactor_cleanup"),
+            ("fix tests", "testing_test_failure"),
+            ("tests are flaky", "testing_test_failure"),
+            ("run tests and fix", "testing_test_failure"),
+            ("api endpoint for users", "backend_api_database"),
+            ("add database model", "backend_api_database"),
+            ("add rate limiting", "security_permissions_auth"),
+            ("add RBAC", "security_permissions_auth"),
+            ("api key authentication", "security_permissions_auth"),
+            ("document this code", "documentation_explanation"),
+            ("explain this error", "documentation_explanation"),
+            ("add JSDoc comments", "documentation_explanation"),
+            ("deployment is broken", "deployment_config_environment"),
+            (
+                "environment variables are not loading",
+                "deployment_config_environment",
+            ),
+            ("fix the Dockerfile", "deployment_config_environment"),
+        ];
+        for (prompt, expected_category) in &cases {
+            let input = intentlayer::compiler::CompileInput {
+                prompt: prompt.to_string(),
+            };
+            let output = intentlayer::compiler::compile(&input, &compiler);
+            assert_eq!(
+                output.category, *expected_category,
+                "Category mismatch for '{}': expected '{}', got '{}'",
+                prompt, expected_category, output.category
+            );
+        }
+    }
+
+    // ── Generalization benchmark tests ──
+
+    /// Generalization benchmark record (simpler schema than seed bench).
+    #[derive(Debug, Deserialize)]
+    struct GenRecord {
+        id: String,
+        category: String,
+        raw_prompt: String,
+        expected_mode: String,
+        #[allow(dead_code)]
+        notes: String,
+    }
+
+    fn find_gen_file() -> PathBuf {
+        let candidates = [
+            "research/vibe_prompt_generalization.jsonl",
+            "../research/vibe_prompt_generalization.jsonl",
+            "../../research/vibe_prompt_generalization.jsonl",
+        ];
+        for c in &candidates {
+            let p = PathBuf::from(c);
+            if p.exists() {
+                return p;
+            }
+        }
+        PathBuf::from("research/vibe_prompt_generalization.jsonl")
+    }
+
+    fn load_gen_records() -> Vec<GenRecord> {
+        let path = find_gen_file();
+        let content = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("Failed to read gen file {:?}: {}", path, e));
+        content
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(|l| {
+                serde_json::from_str::<GenRecord>(l)
+                    .expect("Failed to parse generalization JSONL line")
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_generalization_file_loads_50_records() {
+        let records = load_gen_records();
+        assert_eq!(
+            records.len(),
+            50,
+            "Generalization benchmark must have exactly 50 records"
+        );
+    }
+
+    #[test]
+    fn test_generalization_no_duplicate_ids() {
+        let records = load_gen_records();
+        let mut seen = std::collections::HashSet::new();
+        for r in &records {
+            assert!(
+                seen.insert(&r.id),
+                "Duplicate ID in generalization set: {}",
+                r.id
+            );
+        }
+    }
+
+    #[test]
+    fn test_generalization_valid_categories() {
+        let valid = [
+            "repair_debug",
+            "error_log_fixing",
+            "continuation_previous_plan",
+            "ambiguous_tiny_command",
+            "feature_implementation",
+            "refactor_cleanup",
+            "production_readiness_hardening",
+            "testing_test_failure",
+            "deployment_config_environment",
+            "commit_push_review",
+            "ui_ux_fix",
+            "backend_api_database",
+            "documentation_explanation",
+            "architecture_planning",
+            "performance_optimization",
+            "security_permissions_auth",
+            "already_good_prompt",
+            "slash_command_agent_command",
+        ];
+        let records = load_gen_records();
+        for r in &records {
+            assert!(
+                valid.contains(&r.category.as_str()),
+                "[{}] Invalid category: '{}'",
+                r.id,
+                r.category
+            );
+            assert!(
+                [
+                    "pass_through",
+                    "minimal_compile",
+                    "local_compile",
+                    "llm_compile"
+                ]
+                .contains(&r.expected_mode.as_str()),
+                "[{}] Invalid expected_mode: '{}'",
+                r.id,
+                r.expected_mode
+            );
+        }
+    }
+
+    #[test]
+    fn test_generalization_mode_accuracy() {
+        let compiler = build_compiler();
+        let records = load_gen_records();
+        let mut correct = 0;
+        let mut failures = Vec::new();
+        for r in &records {
+            let input = intentlayer::compiler::CompileInput {
+                prompt: r.raw_prompt.clone(),
+            };
+            let output = intentlayer::compiler::compile(&input, &compiler);
+            if output.mode == r.expected_mode {
+                correct += 1;
+            } else {
+                failures.push(format!(
+                    "  {}: expected={} got={} prompt=\"{}\"",
+                    r.id, r.expected_mode, output.mode, r.raw_prompt
+                ));
+            }
+        }
+        let pct = correct as f64 / records.len() as f64 * 100.0;
+        println!(
+            "Generalization mode accuracy: {}/{} ({:.1}%)",
+            correct,
+            records.len(),
+            pct
+        );
+        if !failures.is_empty() {
+            println!("Mode failures:");
+            for f in &failures {
+                println!("{}", f);
+            }
+        }
+        assert!(
+            pct >= 80.0,
+            "Generalization mode accuracy too low: {:.1}% (need >= 80%)",
+            pct
+        );
+    }
+
+    #[test]
+    fn test_generalization_category_accuracy() {
+        let compiler = build_compiler();
+        let records = load_gen_records();
+        let mut correct = 0;
+        let mut failures = Vec::new();
+        let mut confusion: std::collections::HashMap<
+            String,
+            std::collections::HashMap<String, usize>,
+        > = std::collections::HashMap::new();
+        for r in &records {
+            let input = intentlayer::compiler::CompileInput {
+                prompt: r.raw_prompt.clone(),
+            };
+            let output = intentlayer::compiler::compile(&input, &compiler);
+            if output.category == r.category {
+                correct += 1;
+            } else {
+                failures.push(format!(
+                    "  {}: expected={} got={} prompt=\"{}\"",
+                    r.id, r.category, output.category, r.raw_prompt
+                ));
+                confusion
+                    .entry(r.category.clone())
+                    .or_default()
+                    .entry(output.category.clone())
+                    .and_modify(|c| *c += 1)
+                    .or_insert(1);
+            }
+        }
+        let pct = correct as f64 / records.len() as f64 * 100.0;
+        println!(
+            "Generalization category accuracy: {}/{} ({:.1}%)",
+            correct,
+            records.len(),
+            pct
+        );
+        if !failures.is_empty() {
+            println!("Category failures:");
+            for f in &failures {
+                println!("{}", f);
+            }
+            println!("Category confusion (expected → got):");
+            for (exp, gots) in &confusion {
+                for (got, count) in gots {
+                    println!("  {} → {} ({}x)", exp, got, count);
+                }
+            }
+        }
+        assert!(
+            pct >= 70.0,
+            "Generalization category accuracy too low: {:.1}% (need >= 70%)",
+            pct
         );
     }
 }
