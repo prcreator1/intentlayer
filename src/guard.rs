@@ -39,12 +39,13 @@ const BANNED_PROVIDERS: &[&str] = &[
 /// present in the original raw prompt (i.e., were invented).
 pub fn check_invention(raw: &str, compiled: &str) -> Vec<String> {
     let raw_lower = raw.to_lowercase();
-    let compiled_check = compiled; // case-sensitive for provider names
+    let compiled_lower = compiled.to_lowercase();
 
     let mut warnings = Vec::new();
 
     for provider in BANNED_PROVIDERS {
-        if compiled_check.contains(provider) && !raw_lower.contains(&provider.to_lowercase()) {
+        let p_lower = provider.to_lowercase();
+        if compiled_lower.contains(&p_lower) && !raw_lower.contains(&p_lower) {
             warnings.push(format!("Invented provider name detected: '{}'", provider));
         }
     }
