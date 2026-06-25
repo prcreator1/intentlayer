@@ -8,10 +8,16 @@
 /// Request for LLM-assisted prompt compilation.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LlmCompileRequest {
-    /// The original user-authored prompt.
+    /// The redacted user-authored prompt.
     pub original_prompt: String,
-    /// Classified category (e.g. "architecture_planning").
+    /// Classified category.
     pub category: String,
+    /// The full safety instruction (includes JSON response contract).
+    pub instruction: String,
+    /// Elements the LLM must preserve.
+    pub must_preserve: Vec<String>,
+    /// Elements the LLM must never invent.
+    pub must_not_invent: Vec<String>,
 }
 
 /// Response from LLM-assisted prompt compilation.
@@ -331,6 +337,9 @@ mod tests {
         let req = LlmCompileRequest {
             original_prompt: "design the system".into(),
             category: "architecture_planning".into(),
+            instruction: "rewrite this".into(),
+            must_preserve: vec![],
+            must_not_invent: vec![],
         };
         assert_eq!(req.original_prompt, "design the system");
         assert_eq!(req.category, "architecture_planning");
@@ -342,6 +351,9 @@ mod tests {
         let req = LlmCompileRequest {
             original_prompt: "test".into(),
             category: "architecture_planning".into(),
+            instruction: "rewrite".into(),
+            must_preserve: vec![],
+            must_not_invent: vec![],
         };
         let result = provider.compile(&req);
         assert!(result.is_err(), "Noop must return error");
@@ -357,6 +369,9 @@ mod tests {
         let req = LlmCompileRequest {
             original_prompt: "test".into(),
             category: "architecture_planning".into(),
+            instruction: "rewrite".into(),
+            must_preserve: vec![],
+            must_not_invent: vec![],
         };
         let r1 = provider.compile(&req);
         let r2 = provider.compile(&req);
@@ -373,6 +388,9 @@ mod tests {
         let req = LlmCompileRequest {
             original_prompt: "test".into(),
             category: "architecture_planning".into(),
+            instruction: "rewrite".into(),
+            must_preserve: vec![],
+            must_not_invent: vec![],
         };
         let _ = provider.compile(&req);
     }
