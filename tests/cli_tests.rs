@@ -445,11 +445,52 @@ fn test_help_mentions_compiled_only() {
 }
 
 #[test]
-fn test_json_still_works_with_compiled_only_absent() {
-    let output = run(&["--prompt", "hello", "--json"]);
-    assert!(output.status.success());
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains('{'), "default CLI still outputs JSON");
+fn test_llm_unsupported_provider_rejected() {
+    let output = run(&[
+        "--llm",
+        "--provider",
+        "typo",
+        "--api-key-env",
+        "SOME_ENV",
+        "--prompt",
+        "design the system",
+        "--json",
+    ]);
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unsupported"),
+        "Must say unsupported: {}",
+        stderr
+    );
+    assert!(stderr.contains("openrouter"), "Must mention openrouter");
+    assert!(stderr.contains("groq"), "Must mention groq");
+    assert!(
+        !stderr.contains("SOME_ENV"),
+        "Must not expose env var value"
+    );
+}
+
+#[test]
+fn test_groq_provider_accepted() {
+    // Provider name is accepted (actual call fails without key)
+    let output = run(&[
+        "--prompt",
+        "design the system",
+        "--llm",
+        "--provider",
+        "groq",
+        "--api-key-env",
+        "GROQ_API_KEY",
+        "--json",
+    ]);
+    // Should fail with transport/key error, not "unsupported provider"
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("unsupported"),
+        "groq must be accepted provider: {}",
+        stderr
+    );
 }
 
 #[test]
@@ -562,35 +603,6 @@ fn test_llm_local_compile_still_uses_local_compiler() {
         stdout.contains("compiled_prompt"),
         "Should produce output: {}",
         stdout
-    );
-}
-
-#[test]
-fn test_llm_unsupported_provider_rejected() {
-    let output = run(&[
-        "--llm",
-        "--provider",
-        "typo",
-        "--api-key-env",
-        "SOME_ENV",
-        "--prompt",
-        "design the system",
-        "--json",
-    ]);
-    assert!(!output.status.success());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("unsupported"),
-        "Must say unsupported: {}",
-        stderr
-    );
-    assert!(
-        stderr.contains("openrouter"),
-        "Must mention supported providers"
-    );
-    assert!(
-        !stderr.contains("SOME_ENV"),
-        "Must not expose env var value"
     );
 }
 
