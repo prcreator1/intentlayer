@@ -662,7 +662,7 @@ No live calls in tests. No default network. Explicit opt-in via feature gate.
   returns clear error message
 - `--compiled-only` works with LLM mode
 - Default CLI behavior unchanged (local/deterministic)
-- 6 new CLI LLM tests
+- 10 new CLI LLM tests
 
 ### Safety
 - `--api-key-env` specifies env var name — never a raw key
@@ -672,4 +672,4 @@ No live calls in tests. No default network. Explicit opt-in via feature gate.
 - No default network calls
 
 ### Test Results
-**172 tests (default) / 175 tests (openrouter-http feature)**
+**176 tests (default) / 179 tests (openrouter-http feature)**
