@@ -537,3 +537,30 @@ a safe fallback.
 
 ### Test Results
 **96 tests: 96 passed, 0 failed, 0 ignored**
+
+---
+
+## Phase 015 — LLM Output Parser
+
+### What Changed
+- New `src/llm_parser.rs` module: `parse_llm_response()` with `LlmParseOutcome`
+  enum (Parsed, Repaired, BestEffort, Fallback).
+- Parser handles: strict JSON, fenced JSON, prose-wrapped JSON, bare text,
+  missing warnings, alias keys (prompt/output → compiled_prompt),
+  empty/invalid output fallback.
+- Safety validation: `validate_compiled_prompt()` rejects empty prompts,
+  meta-commentary ("as an AI..."), and excessive length.
+- README: LLM Output Parsing and Repair section.
+- 17 parser tests covering all parse/repair/fallback paths.
+
+### Real LLM Calls Enabled?
+**No.** No external API calls. No network. No OAuth.
+
+### Safety Rules
+- Upstream model output is never trusted blindly
+- Parser never executes code, runs commands, or makes network calls
+- Fallback preserves user intent without invention
+- No second LLM call during repair
+
+### Test Results
+**116 tests: 116 passed, 0 failed, 0 ignored**
