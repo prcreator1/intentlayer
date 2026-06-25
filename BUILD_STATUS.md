@@ -336,7 +336,7 @@ priority trade-off.
 - ~30 new keywords added — map is growing, needs restructuring
 
 ### Test Totals
-**40 tests: 40 passed, 0 failed, 0 ignored**
+**42 tests: 42 passed, 0 failed, 0 ignored**
 
 ---
 
@@ -367,4 +367,4 @@ the concatenation order in `specific_phrases()` and `generic_keywords()`.
 - Generalization: 90% mode, 96% category
 
 ### Test Totals
-**41 tests: 41 passed, 0 failed, 0 ignored**
+**42 tests: 42 passed, 0 failed, 0 ignored**
