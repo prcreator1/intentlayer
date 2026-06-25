@@ -39,6 +39,7 @@ cargo run -- --rules-path research/transformation_rules.json --prompt "fix this 
 | `--rules-path <path>` | Load transformation rules from a JSON file |
 | `--pretty` | Pretty-printed JSON (default) |
 | `--json` | Compact JSON output |
+| `--version` | Print version and exit |
 | `--help` | Show usage and exit |
 
 When neither `--prompt` nor `--input` is provided, JSON is read from stdin.
@@ -70,3 +71,22 @@ When neither `--prompt` nor `--input` is provided, JSON is read from stdin.
 ```bash
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 ```
+
+## Local Install / Build
+
+```bash
+cargo build --release
+./target/release/intentlayer --prompt "fix this bug" --pretty
+./target/release/intentlayer --version
+```
+
+The release binary can be called by coding agents as a local preprocessor
+to transform messy prompts before execution.
+
+### Future GitHub Releases
+
+Release artifacts (planned):
+- `intentlayer-linux-x86_64` — Linux binary
+- `intentlayer-macos-x86_64` — macOS binary
+- `intentlayer-windows-x86_64.exe` — Windows binary
+- `sha256sums.txt` — checksum file
