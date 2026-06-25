@@ -261,6 +261,9 @@ echo '{"prompt":"...}' | intentlayer    # stdin fallback (preserved)
 - `test_rules_path_override_works`
 - `test_no_input_produces_error`
 
+
+**Post-review patch:** restored generic `review` and `clean up` routing while keeping specific phrases higher priority.  Added 2 regression test functions (6 prompts).  No accuracy regression — seed 100/100, generalization 96% category / 90% mode.
+
 ### Test Totals
 - 1 unit test (rules)
 - 11 benchmark tests (10 passed, 1 ignored)
