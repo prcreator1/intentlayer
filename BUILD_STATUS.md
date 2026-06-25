@@ -213,3 +213,61 @@ Category test `#[ignore]`d. Expected-prompt test aspirational (>=
 - Precise category routing
 - Real tokenizer
 - Strict expected_compiled_prompt matching
+
+---
+
+## Phase 005 — CLI Usability
+
+### What Changed
+
+`src/main.rs` rewritten with a manual CLI argument parser (no external
+dependencies — avoids clap for v0.1).
+
+**Supported forms:**
+```bash
+intentlayer --prompt "fix this repo"
+intentlayer --input input.json
+intentlayer --rules-path path/to/rules.json --prompt "text"
+intentlayer --pretty
+intentlayer --json
+intentlayer --help
+echo '{"prompt":"...}' | intentlayer    # stdin fallback (preserved)
+```
+
+**Error handling:**
+- Missing value after `--prompt` / `--input` / `--rules-path`
+- Conflicting `--prompt` and `--input`
+- Invalid JSON from stdin or `--input` file
+- Missing `prompt` field in input JSON
+- Unreadable input file
+- Unreadable rules file
+- Empty prompt text
+
+**CLI tests added (16):**
+- `test_help_exits_successfully`
+- `test_prompt_via_direct_argument`
+- `test_json_input_file`
+- `test_stdin_json_fallback`
+- `test_invalid_json_gives_error`
+- `test_missing_prompt_field_gives_error`
+- `test_missing_prompt_value_after_flag`
+- `test_missing_input_value_after_flag`
+- `test_missing_rules_path_value_after_flag`
+- `test_unreadable_input_file_gives_error`
+- `test_unreadable_rules_file_gives_error`
+- `test_conflicting_input_sources_give_error`
+- `test_pretty_json_is_default`
+- `test_json_flag_produces_compact`
+- `test_rules_path_override_works`
+- `test_no_input_produces_error`
+
+### Test Totals
+- 1 unit test (rules)
+- 11 benchmark tests (10 passed, 1 ignored)
+- 16 CLI tests
+- **28 total: 27 passed, 0 failed, 1 ignored**
+
+### Known Limitations
+- Manual argparse — no short flags (`-p`, `-i`), no `--version`
+- No shell completion
+- Stdin JSON behavior unchanged (reads all bytes, then parses)
