@@ -700,3 +700,23 @@ INTENTLAYER_RUN_LIVE_SMOKE=1 cargo test --features openrouter-http -- --ignored
 
 ### Test Results
 - **180 tests (4 live ignored) / 183 tests with feature (2 ignored)**
+
+---
+
+## Phase 021 — Groq Provider Adapter
+
+### What Changed
+- `src/groq.rs` — Groq provider adapter via OpenAI-compatible API
+- `groq-http` feature gate added
+- CLI: `--provider groq` supported, unsupported provider list updated
+- Groq uses `max_completion_tokens`, avoids unsupported fields
+- 7 unit tests for Groq request/response
+
+### Groq Endpoint
+Base URL: `https://api.groq.com/openai/v1`
+Auth: `Authorization: Bearer <key>`
+Default model: `llama-3.3-70b-versatile`
+
+### Test Results
+**187 tests (default) / 189 tests (groq-http or openrouter-http)**
+All pass. 2 live smoke tests ignored.

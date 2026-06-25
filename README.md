@@ -166,6 +166,7 @@ intentlayer --prompt "fix parser bug" --compiled-only
 # LLM mode (requires openrouter-http feature + runtime API key)
 intentlayer --prompt "fix parser bug" --llm --provider openrouter --api-key-env OPENROUTER_API_KEY
 intentlayer --prompt "fix parser bug" --llm --provider openrouter --api-key-env OPENROUTER_API_KEY --compiled-only
+intentlayer --prompt "fix parser bug" --llm --provider groq --api-key-env GROQ_API_KEY --compiled-only
 ```
 
 - `--llm` enables LLM mode
@@ -201,6 +202,19 @@ feature. The feature is disabled by default.
 - API keys are never stored, printed, committed, or included in errors
 - HTTP errors are sanitized (status codes only, no URL/body/headers)
 - Provider output still goes through parser and invention guard
+
+## Groq Provider
+
+Groq is supported as an explicit opt-in provider. Requires `groq-http` feature.
+
+```bash
+intentlayer --prompt "design retry wrapper" --llm --provider groq --api-key-env GROQ_API_KEY
+```
+
+- Base URL: `https://api.groq.com/openai/v1`
+- Uses `max_completion_tokens` (not `max_tokens`)
+- Does not send unsupported fields (`logprobs`, `top_logprobs`, `response_format`)
+- Default model: `llama-3.3-70b-versatile`
 
 ## Runtime LLM Provider Config
 

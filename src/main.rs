@@ -289,9 +289,9 @@ fn main() {
             process::exit(1);
         }
         let p = args.provider.as_deref().unwrap();
-        if p != "openrouter" {
+        if p != "openrouter" && p != "groq" {
             eprintln!(
-                "Error: unsupported LLM provider '{}'. Supported providers: openrouter",
+                "Error: unsupported LLM provider '{}'. Supported providers: openrouter, groq",
                 p
             );
             process::exit(1);
@@ -321,7 +321,8 @@ fn main() {
     };
 
     let llm_eligible = args.llm
-        && args.provider.as_deref() == Some("openrouter")
+        && (args.provider.as_deref() == Some("openrouter")
+            || args.provider.as_deref() == Some("groq"))
         && classification.mode == intentlayer::classifier::Mode::LlmCompile;
 
     // Only require API key when an actual LLM call will be made
@@ -331,7 +332,11 @@ fn main() {
     }
 
     let output = if llm_eligible {
-        run_llm_openrouter(&prompt_text, &classification.category, &args)
+        match args.provider.as_deref() {
+            Some("openrouter") => run_llm_openrouter(&prompt_text, &classification.category, &args),
+            Some("groq") => run_llm_groq(&prompt_text, &classification.category, &args),
+            _ => compiler.compile_prompt(&prompt_text),
+        }
     } else {
         compiler.compile_prompt(&prompt_text)
     };
@@ -409,6 +414,63 @@ fn run_llm_openrouter(
     };
 
     let provider = OpenRouterProvider::new(resolved, transport);
+    let opts = LlmEnvelopeOptions::default();
+
+    compile_with_llm_orchestration(prompt, category, &provider, &opts)
+}
+
+#[cfg(not(feature = "groq-http"))]
+fn run_llm_groq(
+    _prompt: &str,
+    _category: &str,
+    #[allow(unused_variables)] _args: &Args,
+) -> intentlayer::compiler::CompileOutput {
+    eprintln!("Error: Groq HTTP transport is not enabled.");
+    eprintln!("Rebuild with --features groq-http.");
+    process::exit(1);
+}
+
+#[cfg(feature = "groq-http")]
+fn run_llm_groq(prompt: &str, category: &str, args: &Args) -> intentlayer::compiler::CompileOutput {
+    use intentlayer::groq::{GroqProvider, ReqwestGroqTransport};
+    use intentlayer::llm::LlmEnvelopeOptions;
+    use intentlayer::llm_config::{resolve_from_env, LlmProviderConfig};
+    use intentlayer::llm_orchestrate::compile_with_llm_orchestration;
+
+    let api_key_env = args.api_key_env.clone().unwrap_or_default();
+    let config = LlmProviderConfig {
+        provider: "groq".into(),
+        base_url: args
+            .base_url
+            .clone()
+            .or(Some("https://api.groq.com/openai/v1".into())),
+        model: args
+            .model
+            .clone()
+            .unwrap_or_else(|| "llama-3.3-70b-versatile".into()),
+        api_key_env: Some(api_key_env),
+        timeout_seconds: args.timeout_seconds.unwrap_or(30),
+        max_tokens: args.max_tokens.unwrap_or(800),
+        temperature: args.temperature.unwrap_or(0.1),
+    };
+
+    let resolved = match resolve_from_env(&config) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+    };
+
+    let transport = match ReqwestGroqTransport::new(&resolved) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+    };
+
+    let provider = GroqProvider::new(resolved, transport);
     let opts = LlmEnvelopeOptions::default();
 
     compile_with_llm_orchestration(prompt, category, &provider, &opts)
