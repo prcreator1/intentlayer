@@ -509,3 +509,28 @@ a safe fallback.
 
 ### Test Results
 **78 tests: 78 passed, 0 failed, 0 ignored**
+
+---
+
+## Phase 014 — LLM Safety Envelope
+
+### What Changed
+- Extended `src/llm.rs` with `LlmPromptEnvelope`, `LlmResponseContract`,
+  and `build_llm_prompt_envelope()` — the safe instruction contract for
+  future LLM-assisted compilation.
+- README: new LLM Safety Envelope section
+- 8 envelope tests: original prompt, category, no-invention rules,
+  rewrite-only instruction, no secrets/api-keys, no system role content,
+  response contract can hold output, response contract can hold warnings
+
+### Safety Rules
+- Envelope contains only the latest user-authored prompt + constraints
+- Never includes system/developer/assistant/tool messages
+- Never includes API keys, env var values, or runtime secrets
+- LLM is asked only to rewrite/structure — never execute tasks
+
+### Real LLM Calls Enabled?
+**No.** No external API calls. No network dependency.
+
+### Test Results
+**86 tests: 86 passed, 0 failed, 0 ignored**
