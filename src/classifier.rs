@@ -47,6 +47,8 @@ pub struct Classification {
     pub rule_id: Option<String>,
 }
 
+// TODO(v0.1): Hardcoded seed heuristic. Replace with learned model or
+// data-driven frequency table in a future version.
 /// Map of action keywords → (category, mode).
 fn keyword_map() -> Vec<(&'static str, &'static str, Mode)> {
     vec![
@@ -81,6 +83,8 @@ fn keyword_map() -> Vec<(&'static str, &'static str, Mode)> {
     ]
 }
 
+// TODO(v0.1): Hardcoded seed list. Replace with data-driven detection from
+// the benchmark corpus or a classifier model in a future version.
 /// Known minimal_compile prompts — short commands that need 1-15 token expansion.
 /// These are checked FIRST (after slash commands and conversational pass-through)
 /// so they don't get caught by broader rule patterns.
@@ -185,6 +189,8 @@ pub fn classify(prompt: &str, rules: &RuleSet) -> Classification {
     }
 }
 
+// TODO(v0.1): Hardcoded seed heuristics (word count threshold, indicator
+// list). Replace with a trained classifier or curated rule set.
 /// Heuristic: does this prompt look specific enough to pass through unchanged?
 ///
 /// A prompt is "already good" if:
