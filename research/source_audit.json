@@ -1,0 +1,113 @@
+{
+  "audit_timestamp": "2026-06-25",
+  "auditor": "IntentLayer Research Agent",
+  "sources": [
+    {
+      "source_name": "PromptSet",
+      "source_url": "https://github.com/pisterlabs/promptset.git",
+      "hf_dataset_url": "https://huggingface.co/datasets/pisterlabs/promptset",
+      "source_role": "raw/messy",
+      "clone_method": "git clone + Hugging Face datasets.load_dataset",
+      "date_accessed": "2026-06-25",
+      "commit_hash": "607ba7373e5eee4ac6a8de7b8337e0345e6d25fc",
+      "license_or_usage_note": "MIT License (per repo LICENSE)",
+      "files_directories_inspected": "Full HF dataset (93142 rows), repo structure (devGPT/, scrape/, opro/, gen_prompts/, analytics/)",
+      "machine_readable_status": "Yes - Parquet via HF datasets, JSON files in repo",
+      "expected_prompt_fields": "prompts (list of strings per row), file_contents, repo_name, file_name",
+      "total_files_scanned": 93142,
+      "total_records_found": 93142,
+      "total_prompt_like_items_found": 282640,
+      "total_prompt_like_items_analyzed": 300,
+      "hundred_percent_analysis_practical": false,
+      "why_not_100_percent": "Full semantic analysis of 282,640 prompt strings would exceed practical compute/time. Stratified sampling by length (short/medium/long, n=100 each) was used. 37.3% of prompts classified as 'other' (non-coding-agent tasks like translation, general Q&A, data labeling), making full analysis low-value for coding-agent focus."
+    },
+    {
+      "source_name": "DevGPT",
+      "source_url": "https://github.com/NAIST-SE/DevGPT.git",
+      "source_role": "raw/messy",
+      "clone_method": "git clone",
+      "date_accessed": "2026-06-25",
+      "commit_hash": "685efd2509dede9a6e996b839ae4e20d33430648",
+      "license_or_usage_note": "No explicit license in repo. Research-use only per NAIST-SE terms.",
+      "files_directories_inspected": "10 snapshot directories (20230727-20231012), 54 JSON files, ChatGPT_Link_Sharing.csv per snapshot",
+      "machine_readable_status": "Yes - JSON with nested ChatgptSharing array",
+      "expected_prompt_fields": "ChatgptSharing[].Conversations[].Prompt, surrounding metadata (source_type, model, status, title, repo)",
+      "total_files_scanned": 54,
+      "total_records_found": 153492,
+      "total_prompt_like_items_found": 153492,
+      "total_prompt_like_items_analyzed": 500,
+      "hundred_percent_analysis_practical": false,
+      "why_not_100_percent": "153,492 conversations across 54 JSON files. Full conversation-level analysis would require parsing all nested turns. Used stratified sampling across source types (code_file, issue, hacker_news, commit, pull_request, discussion) proportional to size. Median prompt length is only 13 tokens, meaning many are conversation follow-ups rather than standalone prompts."
+    },
+    {
+      "source_name": "Vibe Coding with Cursor: A Complete Guide",
+      "source_url": "https://github.com/pr0mila/Vibe-Coding-with-Cursor-A-Complete-Guide.git",
+      "source_role": "good/reference",
+      "clone_method": "git clone",
+      "date_accessed": "2026-06-25",
+      "commit_hash": "9edf292b95735296cd31c3926d8a6bb4b43ed207",
+      "license_or_usage_note": "MIT License",
+      "files_directories_inspected": "README.md (589 lines - sole content file)",
+      "machine_readable_status": "Yes - Markdown",
+      "expected_prompt_fields": "Phase-specific prompt templates (Planning, Architecture, Validation, Implementation, Testing, Documentation), Best Practices, Examples",
+      "total_files_scanned": 1,
+      "total_records_found": 14,
+      "total_prompt_like_items_found": 14,
+      "total_prompt_like_items_analyzed": 14,
+      "hundred_percent_analysis_practical": true,
+      "why_not_100_percent": null
+    },
+    {
+      "source_name": "PromptSource",
+      "source_url": "https://github.com/bigscience-workshop/promptsource.git",
+      "source_role": "good/reference",
+      "clone_method": "git clone",
+      "date_accessed": "2026-06-25",
+      "commit_hash": "7dab96a3eeb3717cea633705135ebc488885d709",
+      "license_or_usage_note": "Apache License 2.0",
+      "files_directories_inspected": "22 template YAML files from diverse domains under promptsource/templates/",
+      "machine_readable_status": "Yes - YAML with jinja templates",
+      "expected_prompt_fields": "jinja (prompt template), answer_choices, metadata, dataset reference",
+      "total_files_scanned": 22,
+      "total_records_found": "Hundreds of template YAML files across 200+ domains; 22 analyzed",
+      "total_prompt_like_items_found": "22 template files (each containing multiple template variants)",
+      "total_prompt_like_items_analyzed": 22,
+      "hundred_percent_analysis_practical": false,
+      "why_not_100_percent": "PromptSource has 200+ domain directories each with multiple template YAML files. Full analysis is impractical and low-value for coding-agent focus since templates are NLP-task-specific (classification, QA, summarization) rather than coding-agent prompts. Structural patterns extracted from representative sample."
+    },
+    {
+      "source_name": "Claude Code System Prompts",
+      "source_url": "https://github.com/Piebald-AI/claude-code-system-prompts.git",
+      "source_role": "reference-only",
+      "clone_method": "git clone",
+      "date_accessed": "2026-06-25",
+      "commit_hash": "b6d6be077392c4987b106fef75687c21867ada18",
+      "license_or_usage_note": "No explicit license in repo. Research/reference use only.",
+      "files_directories_inspected": "27 system-prompt*.md, 16 skill-*.md, 35+ tool-description*.md, 10+ agent-prompt*.md, 10+ system-reminder*.md, 6 data-*.md files",
+      "machine_readable_status": "Yes - Markdown",
+      "expected_prompt_fields": "System prompt rules, agent instructions, tool descriptions, reminder messages, skill definitions",
+      "total_files_scanned": 519,
+      "total_records_found": 519,
+      "total_prompt_like_items_found": 104,
+      "total_prompt_like_items_analyzed": 27,
+      "hundred_percent_analysis_practical": false,
+      "why_not_100_percent": "519 files total. Many are highly specific (tool parameters, API references, streaming docs, etc.) with low relevance to IntentLayer compiler design. Focused on files with software engineering task structure, verification, safety, conciseness rules, and sub-agent patterns."
+    }
+  ],
+  "coverage_strategy": {
+    "method": "Full indexing/counting for all sources + stratified sampling for semantic analysis where full analysis impractical",
+    "stratification_dimensions": [
+      "source",
+      "prompt_length (short/medium/long)",
+      "source_type (DevGPT: code_file/issue/HN/commit/PR/discussion)",
+      "coding_task_category"
+    ],
+    "key_term_coverage": [
+      "fix", "continue", "error", "test", "refactor", "production",
+      "deploy", "commit", "add", "update", "auth", "payment",
+      "backend", "UI", "previous", "plan"
+    ],
+    "total_raw_prompts_indexed": 436132,
+    "total_semantically_analyzed": 863
+  }
+}
