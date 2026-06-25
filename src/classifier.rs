@@ -344,6 +344,25 @@ fn keyword_map() -> Vec<(&'static str, &'static str, Mode)> {
             "documentation_explanation",
             Mode::LocalCompile,
         ),
+        // Specific review / cleanup phrases — higher priority than generic
+        ("review this pr", "commit_push_review", Mode::LocalCompile),
+        (
+            "review current diff",
+            "commit_push_review",
+            Mode::LocalCompile,
+        ),
+        (
+            "review the branch",
+            "commit_push_review",
+            Mode::LocalCompile,
+        ),
+        ("clean up auth", "refactor_cleanup", Mode::LocalCompile),
+        ("clean up dashboard", "refactor_cleanup", Mode::LocalCompile),
+        (
+            "clean up the parser",
+            "refactor_cleanup",
+            Mode::LocalCompile,
+        ),
         // Generic single-word keywords — lower priority
         ("fix", "repair_debug", Mode::LocalCompile),
         ("broken", "repair_debug", Mode::LocalCompile),
@@ -351,6 +370,7 @@ fn keyword_map() -> Vec<(&'static str, &'static str, Mode)> {
         ("error", "error_log_fixing", Mode::LocalCompile),
         ("traceback", "error_log_fixing", Mode::LocalCompile),
         ("refactor", "refactor_cleanup", Mode::LocalCompile),
+        ("clean up", "refactor_cleanup", Mode::LocalCompile),
         (
             "production",
             "production_readiness_hardening",
@@ -367,6 +387,7 @@ fn keyword_map() -> Vec<(&'static str, &'static str, Mode)> {
             Mode::LocalCompile,
         ),
         ("commit", "commit_push_review", Mode::LocalCompile),
+        ("review", "commit_push_review", Mode::LocalCompile),
         ("push", "commit_push_review", Mode::LocalCompile),
         ("optimize", "performance_optimization", Mode::LocalCompile),
         ("faster", "performance_optimization", Mode::LocalCompile),
