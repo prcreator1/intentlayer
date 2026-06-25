@@ -5,6 +5,7 @@
 
 pub mod classifier;
 pub mod compiler;
+pub mod groq;
 pub mod guard;
 pub mod llm;
 pub mod llm_config;
