@@ -59,3 +59,44 @@ All 5 slash command entries unchanged — they are the canonical `pass_through` 
 - PAT does not support HTTPS git push
 - All file operations use GitHub Contents API
 - Token lacks repo admin permissions (cannot delete repos)
+
+---
+
+## Phase 002 — Cleanup Bootstrap Consistency
+
+### What Was Fixed
+
+#### 1. AGENTS.md rewritten for Builder Agent
+
+Changed role from "IntentLayer Research Agent" / "You are not the builder agent" to "IntentLayer Builder Agent". Kept core product laws intact: prompt-only compiler, latest user prompt only, no return-path mutation, no invention, context-reference preservation. Added compiler modes table with `expected_compiled_prompt` contract.
+
+#### 2. Benchmark trimmed to exactly 100 records
+
+Removed 2 erroneous extra records that made the count 102 instead of 100. Remaining records: pass_through (22), minimal_compile (9), local_compile (66), llm_compile (3). Verified mode distribution matches BUILD_STATUS claims.
+
+#### 3. `minimal_compile` entries now have proper compiled prompts
+
+All 9 minimal_compile entries now have non-null `expected_compiled_prompt` fields (1-15 tokens). No entry says "exact pass through" in its notes. Examples:
+- `"continue"` → `"Continue from current state."`
+- `"resume"` → `"Resume previous work."`
+- `"try again"` → `"Retry previous action."`
+
+Phase 001 incorrectly reported llm_compile as 7. Actual count was always 3 (arch_001, arch_002, deploy_005). Corrected to match reality.
+
+### Final Mode Distribution
+
+| Mode | Description | Max Tokens | Count |
+|------|-------------|-----------|-------|
+| pass_through | Exact unchanged, expected_compiled_prompt: null | 0 | 22 |
+| minimal_compile | Small non-null compiled prompt | 1-15 | 9 |
+| local_compile | Category-based rewrite | 60-90 | 66 |
+| llm_compile | Structured prompt generation | 80-120 | 3 |
+| **Total** | | | **100** |
+
+### What Remains Next
+
+- Build prompt category classifier
+- Implement pass_through/minimal_compile/local_compile/llm_compile routers
+- Build invention guard (provider blocklist)
+- Build benchmark test runner
+- Set up CI (GitHub Actions)

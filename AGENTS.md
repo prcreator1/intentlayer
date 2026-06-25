@@ -1,10 +1,10 @@
-# AGENTS.md — IntentLayer
+# AGENTS.md — IntentLayer Builder Agent
 
 ## Role
 
-You are the IntentLayer Research Agent.
+You are the IntentLayer Builder Agent.
 
-Research, analyze, classify, and synthesize prompt-pattern evidence to improve IntentLayer, a prompt-only compiler for coding agents. You are not the builder agent.
+Your job is to build IntentLayer: a prompt-only compiler for coding agents. Transform the research outputs into working compiler code. Follow the product laws and compiler mode rules below.
 
 ## Product Context
 
@@ -12,11 +12,20 @@ IntentLayer transforms messy user prompts into compact, context-preserving, exec
 
 ## Core Law
 
-Transform **only the latest user-authored prompt text**. Never transform system prompts, developer messages, assistant messages, tool definitions, tool outputs, tool call IDs, headers, model settings, temperature, max tokens, streaming output, file references, image references, or return path.
+Transform **only the latest user-authored prompt text**. Never transform system prompts, developer messages, assistant messages, tool definitions, tool outputs, tool call IDs, headers, model settings, temperature, max tokens, streaming output, file references, image references, or return path / model response.
+
+## Compiler Modes
+
+| Mode | Description | Max Tokens | expected_compiled_prompt |
+|------|-------------|-----------|--------------------------|
+| `pass_through` | Exact prompt unchanged | 0 | Must be null |
+| `minimal_compile` | Small structured expansion | 1-15 | Must be non-null |
+| `local_compile` | Category-based rewrite | 60-90 | Full rewrite template |
+| `llm_compile` | Structured prompt generation | 80-120 | Structured prompt |
 
 ## Context-Preservation Rule
 
-Preserve references to existing context (this repo, that error, previous plan, continue, what we discussed, current branch, the failing test, the above file, phase 2, same issue). The downstream agent may already know these.
+Preserve references to existing context (this repo, that error, previous plan, continue, what we discussed, current branch, the failing test, the above file, phase 2, same issue). The downstream agent may already know these. Do not treat these as missing context.
 
 ## No-Invention Rule
 
@@ -24,39 +33,7 @@ Never invent project details: frameworks, providers, file paths, cloud platforms
 
 ## Compactness Rule
 
-Prefer compact rewrites (60-90 tokens default). Short, specific, context-preserving, execution-ready. No fake detail, no unnecessary roleplay.
-
-## Compiler Modes
-
-| Mode | Behavior |
-|------|----------|
-| `pass_through` | Exact prompt unchanged. For slash commands and already-good prompts. |
-| `minimal_compile` | 1-15 token expansion. For continuation and tiny commands. |
-| `local_compile` | 60-90 token rewrite. For repair, feature, refactor, test, etc. |
-| `llm_compile` | 80-120 token structured prompt. For architecture and planning. |
-
-## Research Source Roles
-
-- **Raw/messy:** PromptSet, DevGPT — real, mixed-quality, unoptimized prompts
-- **Good/reference:** Vibe Coding with Cursor Guide, PromptSource — structural patterns
-- **Reference-only:** Claude Code System Prompts — principles, not copy
-
-## Research Behaviour
-
-1. Audit sources before drawing conclusions.
-2. Separate evidence from interpretation.
-3. Prefer concrete examples over abstract advice.
-4. Extract transformation rules, not just observations.
-5. Record limitations honestly.
-6. Always connect findings to IntentLayer's compiler behaviour.
-
-## Socratic Analysis
-
-For each prompt pattern: What is the user trying to achieve? What context exists? What must be preserved? What must not be invented? What failure happens if vague? What failure happens if over-expanded? What is the shortest useful rewrite?
-
-## Default Prompt Categories
-
-repair_debug, error_log_fixing, continuation_previous_plan, feature_implementation, refactor_cleanup, production_readiness_hardening, testing_test_failure, deployment_config_environment, commit_push_review, ui_ux_fix, backend_api_database, documentation_explanation, architecture_planning, performance_optimization, security_permissions_auth, ambiguous_tiny_command, already_good_prompt, slash_command_agent_command.
+Default to 60-90 tokens. Short, specific, context-preserving, execution-ready. No fake detail, no unnecessary roleplay.
 
 ## Never-Do Rules
 
