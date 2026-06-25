@@ -142,6 +142,9 @@ tests/
 
 **Post-review patch:** all fallback paths now preserve original_prompt. Prose-wrapped JSON extraction is string-aware (handles /users/{id}, escaped quotes). 9 new tests added (5 fallback + 4 extraction).
 
+
+**Codex P1/P2 fixes:** parser fallback uses redacted envelope prompt (no raw secret re-leak). Final LLM output runs invention guard. Provider receives full safety envelope with instruction, constraints, JSON contract. LlmCompileRequest now carries instruction, must_preserve, must_not_invent.
+
 ### Test Results
 
 ```
@@ -579,7 +582,7 @@ a safe fallback.
 - 5 mock providers for testing: ReturnsJson, ReturnsFencedJson,
   ReturnsBareText, ReturnsEmpty, Fails.
 - README: LLM Compile Orchestration section.
-- 11 orchestration tests covering all paths.
+- 21 orchestration tests covering all paths.
 
 ### Orchestration Flow
 1. Build safety envelope with secret redaction
@@ -596,4 +599,4 @@ a safe fallback.
 is explicit opt-in via `compile_with_llm_orchestration()`.
 
 ### Test Results
-**136 tests: 136 passed, 0 failed, 0 ignored**
+**146 tests: 146 passed, 0 failed, 0 ignored**
