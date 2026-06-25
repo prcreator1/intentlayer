@@ -126,6 +126,21 @@ Upstream model output is never trusted blindly. The parser handles:
 
 No second LLM call is made during repair. No network.
 
+## LLM Compile Orchestration
+
+The full LLM-assisted compile path is wired as an explicit opt-in. Default
+compile behavior remains deterministic/local. **No real provider calls are
+enabled yet.**
+
+Orchestration flow:
+1. Build safety envelope (Phase 014) with secret redaction
+2. Respect local secret passthrough (bypasses provider entirely)
+3. Call provider trait (mock only for now)
+4. Parse/repair/fallback provider output (Phase 015)
+5. Return compiled prompt with all warnings preserved
+
+Provider output is never trusted directly — it goes through the parser.
+
 ## Runtime LLM Provider Config
 
 Future LLM providers are configured at runtime. Raw API keys are read from
