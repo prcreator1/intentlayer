@@ -878,6 +878,39 @@ mod tests {
         }
     }
 
+    // ── Regression: phase prefix must not override action keywords ──
+
+    #[test]
+    fn test_phase_prefix_does_not_override_action_keywords() {
+        let compiler = build_compiler();
+        let cases: &[(&str, &str)] = &[
+            ("phase 2 add auth", "feature_implementation"),
+            ("phase 2 fix tests", "testing_test_failure"),
+            ("phase 3 clean up parser", "refactor_cleanup"),
+            ("phase 4 review current diff", "commit_push_review"),
+        ];
+        for (prompt, expected) in cases {
+            let input = intentlayer::compiler::CompileInput {
+                prompt: prompt.to_string(),
+            };
+            let output = intentlayer::compiler::compile(&input, &compiler);
+            assert_eq!(
+                output.category, *expected,
+                "Phase prefix prompt '{}' should route to {}: got {}",
+                prompt, expected, output.category
+            );
+        }
+        let input = intentlayer::compiler::CompileInput {
+            prompt: "phase 3".to_string(),
+        };
+        let output = intentlayer::compiler::compile(&input, &compiler);
+        assert_eq!(
+            output.category, "continuation_previous_plan",
+            "Bare 'phase 3' should route to continuation_previous_plan: got {}",
+            output.category
+        );
+    }
+
     // ── Precedence: specific phrases beat generic keywords ──────────
 
     #[test]
