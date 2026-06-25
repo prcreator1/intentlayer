@@ -447,3 +447,34 @@ only the final structured prompt. `--compiled-only` makes this seamless.
 
 ### Test Results
 **60 tests: 60 passed, 0 failed, 0 ignored**
+
+---
+
+## Phase 012 — LLM Compile Boundary
+
+### What Changed
+- New `src/llm.rs` module defining the future LLM-assist contract:
+  `LlmCompileRequest`, `LlmCompileResponse`, `LlmError`, `LlmProvider` trait,
+  and `NoopLlmCompiler` default provider.
+- README: new **LLM-Assisted Compile Path** section explaining that real LLM
+  calls are not enabled yet and documenting future provider rules.
+- 4 unit tests: boundary types compile, noop returns NoProvider, noop is
+  deterministic, noop has no network surface.
+
+### Real LLM Calls Enabled?
+**No.** No external API calls added. No API keys or secrets introduced.
+`NoopLlmCompiler` always returns `LlmError::NoProvider`. The stub in
+`compiler.rs` continues using the deterministic local template fallback.
+
+### Why
+The boundary makes it clear where LLM integration will plug in, without
+enabling it prematurely. Future implementors have a typed contract and
+a safe fallback.
+
+### Future Provider Rules
+- Deterministic modes run first
+- LLM providers must preserve context, must not invent stack/provider/framework
+- Return only a rewritten prompt — not execute tasks
+
+### Test Results
+**64 tests: 64 passed, 0 failed, 0 ignored**

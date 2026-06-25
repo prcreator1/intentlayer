@@ -67,6 +67,24 @@ When neither `--prompt` nor `--input` is provided, JSON is read from stdin.
 | `local_compile` | Category-based rewrite (repair, feature, refactor, etc.) |
 | `llm_compile` | Structured prompt generation (architecture, planning) — stub in v0.1 |
 
+## LLM-Assisted Compile Path
+
+`llm_compile` mode is reserved for complex synthesis/planning prompts
+that need deeper restructuring. Real LLM calls are **not enabled yet**.
+The boundary is defined in `src/llm.rs`.
+
+**Current state:**
+- Architecture/planning prompts route to `llm_compile` mode
+- A deterministic local template is used as fallback (stub)
+- No external API calls are made
+- No API keys or secrets are required
+
+**Future provider rules (must preserve):**
+- Original context preservation
+- No invention of stack choices, services, files, tools, or scope
+- Return only a rewritten prompt — do not execute tasks
+- Deterministic modes (`pass_through`, `minimal_compile`, `local_compile`) run before LLM
+
 ## Development
 
 ```bash
