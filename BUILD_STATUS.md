@@ -136,6 +136,9 @@ tests/
 
 **Post-review patch:** api_key_env is now validated as an env-var name before lookup. Invalid names (containing hyphens, spaces, =, /, etc.) are rejected. Errors redact the invalid value. 6 new validation tests added.
 
+
+**Post-review patch:** Codex P2 #1 fixed (JSON response instruction). Codex P2 #2 fixed (secret redaction before LLM envelope). Local secret passthrough added (marker + explicit unsafe opt-in). Raw secrets never sent to upstream LLM envelope. Normal quotes are not a bypass. 10 new envelope/redaction/passthrough tests.
+
 ### Test Results
 
 ```
@@ -533,4 +536,4 @@ a safe fallback.
 **No.** No external API calls. No network dependency.
 
 ### Test Results
-**86 tests: 86 passed, 0 failed, 0 ignored**
+**96 tests: 96 passed, 0 failed, 0 ignored**
