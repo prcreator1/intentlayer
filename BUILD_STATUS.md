@@ -81,7 +81,7 @@ All 9 minimal_compile entries now have non-null `expected_compiled_prompt` field
 - `"resume"` → `"Resume previous work."`
 - `"try again"` → `"Retry previous action."`
 
-Removed 2 records (good_010, good_011) and 3 llm_compile records that belonged to deploy_005 and arch entries that caused mode count mismatch.
+Phase 001 incorrectly reported llm_compile as 7. Actual count was always 3 (arch_001, arch_002, deploy_005). Corrected to match reality.
 
 ### Final Mode Distribution
 
