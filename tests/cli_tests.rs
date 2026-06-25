@@ -268,15 +268,11 @@ fn test_version_flag() {
     let output = run(&["--version"]);
     assert!(output.status.success(), "--version should exit 0");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("intentlayer"),
-        "--version should contain crate name, got: {}",
-        stdout
-    );
-    assert!(
-        stdout.contains("0.1"),
-        "--version should contain version number, got: {}",
-        stdout
+    let expected = format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+    assert_eq!(
+        stdout.trim(),
+        expected,
+        "--version should match Cargo metadata"
     );
 }
 
