@@ -309,3 +309,79 @@ fn test_release_invocation_with_prompt() {
         "Release-style invocation should produce valid JSON"
     );
 }
+
+// ── Agent integration safety tests ──
+
+#[test]
+fn test_contract_exit_valid_prompt() {
+    let output = run(&["--prompt", "hello", "--json"]);
+    assert!(output.status.success(), "Valid --prompt must exit 0");
+}
+
+#[test]
+fn test_contract_exit_valid_stdin() {
+    let output = run_with_stdin(&["--json"], r#"{"prompt":"hello"}"#);
+    assert!(output.status.success(), "Valid stdin JSON must exit 0");
+}
+
+#[test]
+fn test_contract_exit_invalid_stdin() {
+    let output = run_with_stdin(&[], "bad json");
+    assert!(
+        !output.status.success(),
+        "Invalid stdin JSON must exit non-zero"
+    );
+}
+
+#[test]
+fn test_contract_exit_missing_input_file() {
+    let output = run(&["--input", "/nonexistent/path.json"]);
+    assert!(
+        !output.status.success(),
+        "Missing input file must exit non-zero"
+    );
+}
+
+#[test]
+fn test_contract_exit_bad_rules_path() {
+    let output = run(&["--rules-path", "/bad/rules.json", "--prompt", "hi"]);
+    assert!(
+        !output.status.success(),
+        "Bad rules path must exit non-zero"
+    );
+}
+
+#[test]
+fn test_contract_exit_version_zero() {
+    let output = run(&["--version"]);
+    assert!(output.status.success(), "--version must exit 0");
+}
+
+#[test]
+fn test_contract_exit_help_zero() {
+    let output = run(&["--help"]);
+    assert!(output.status.success(), "--help must exit 0");
+}
+
+#[test]
+fn test_contract_smoke_output_fields() {
+    let output = run(&["--input", "examples/agent_request.json", "--json"]);
+    assert!(output.status.success(), "Smoke test must exit 0");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let required = [
+        "original_prompt",
+        "compiled_prompt",
+        "mode",
+        "category",
+        "changed",
+        "warnings",
+    ];
+    for field in &required {
+        assert!(
+            stdout.contains(field),
+            "Output must contain field '{}': {}",
+            field,
+            stdout
+        );
+    }
+}
