@@ -175,24 +175,13 @@ test tests::test_token_cap_respected ... ok                    # Token caps
 
 ## Phase 004 — CI and Accuracy Harness
 
-### CI Workflow — Blocked by OAuth Scope
+### CI Workflow — `workflow` scope resolved
 
-Attempted to create `.github/workflows/rust.yml`. Result:
+`.github/workflows/rust.yml` pushed successfully.
 
-**`gh api` Contents PUT**: HTTP 404
-**Git push via `gh auth setup-git`**: rejected with:
-```
-refusing to allow an OAuth App to create or update workflow
-`.github/workflows/rust.yml` without `workflow` scope
-```
-
-**Root cause**: the GitHub OAuth token used by this session has scopes
-`gist, read:org, repo` but is **missing the `workflow` scope**.
-GitHub requires explicit `workflow` permission to create/modify files
-under `.github/workflows/`.
-
-**Required action**: re-authenticate with a token that includes the
-`workflow` scope, then push `.github/workflows/rust.yml` via git.
+Re-authentication with a token that includes the `workflow` scope
+resolved the earlier blocker.  CI now runs on push to `main` / `phase/*`
+and PRs to `main`.
 
 ### Accuracy Report (`test_accuracy_report`)
 Prints per-mode accuracy during test execution. Enforces mode_accuracy
@@ -215,13 +204,11 @@ Category test `#[ignore]`d. Expected-prompt test aspirational (>=
 - TODO(v0.1) markers on hardcoded heuristics
 
 ### Current Known Limitations
-- CI not active until `workflow` scope is added to OAuth token
 - Category accuracy: 69%
 - Local compile exact match: 2/66
 - `llm_compile` is a stub
 
 ### What Remains Next
-- Re-auth with `workflow` scope → push `.github/workflows/rust.yml`
 - Real `llm_compile` with LLM API call
 - Precise category routing
 - Real tokenizer
