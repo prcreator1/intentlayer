@@ -85,6 +85,43 @@ The boundary is defined in `src/llm.rs`.
 - Return only a rewritten prompt — do not execute tasks
 - Deterministic modes (`pass_through`, `minimal_compile`, `local_compile`) run before LLM
 
+## Runtime LLM Provider Config
+
+Future LLM providers are configured at runtime. Raw API keys are read from
+environment variables only — config files store env-var names, never secrets.
+
+**Real LLM calls are not enabled yet.** This section documents the config
+shape for future use.
+
+**OpenAI-compatible provider (example):**
+
+```toml
+provider = "openai-compatible"
+base_url = "https://api.openai.com/v1"
+model = "gpt-4.1-mini"
+api_key_env = "OPENAI_API_KEY"
+timeout_seconds = 30
+max_tokens = 800
+temperature = 0.1
+```
+
+**Local Ollama / no-key provider (example):**
+
+```toml
+provider = "ollama"
+base_url = "http://localhost:11434/v1"
+model = "qwen2.5-coder"
+timeout_seconds = 30
+max_tokens = 800
+temperature = 0.1
+```
+
+**Security rules:**
+- Config stores env-var names, never raw API keys
+- Credentials read at runtime via `std::env::var`
+- `Debug` output redacts keys to `[REDACTED]`
+- Error messages reference env var names only — never key values
+
 ## Development
 
 ```bash
