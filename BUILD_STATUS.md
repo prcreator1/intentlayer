@@ -732,9 +732,13 @@ All pass. 2 live smoke tests ignored.
   - `extract_choice_content()` — shared response extraction
   - `sanitize_http_status()` — status-code-only HTTP errors
   - `build_envelope_messages()` — shared system/user message builder
-- 8 unit tests for shared core functions
-- OpenRouter and Groq behavior preserved (full adoption deferred to future phase)
-- No new provider added, no new feature gates
+- `src/openrouter.rs` and `src/groq.rs` now consume the shared core:
+  - Shared `Message` replaces local OpenRouter/Groq message structs
+  - Shared `ChatResponse`/`Choice`/`ResponseMessage` replace local response structs
+  - Shared `extract_choice_content()` handles response extraction
+  - Shared `sanitize_http_status()` handles HTTP status errors
+  - Shared `build_envelope_messages()` builds the system/user envelope
+  - Provider-specific fields preserved (max_tokens vs max_completion_tokens)
 
 ### Test Results
 **195 tests (default) / 198 tests (combined features)**
