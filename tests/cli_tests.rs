@@ -327,27 +327,30 @@ fn test_contract_exit_valid_stdin() {
 #[test]
 fn test_contract_exit_invalid_stdin() {
     let output = run_with_stdin(&[], "bad json");
-    assert!(
-        !output.status.success(),
-        "Invalid stdin JSON must exit non-zero"
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "Invalid stdin JSON must exit with code 1"
     );
 }
 
 #[test]
 fn test_contract_exit_missing_input_file() {
     let output = run(&["--input", "/nonexistent/path.json"]);
-    assert!(
-        !output.status.success(),
-        "Missing input file must exit non-zero"
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "Missing input file must exit with code 1"
     );
 }
 
 #[test]
 fn test_contract_exit_bad_rules_path() {
     let output = run(&["--rules-path", "/bad/rules.json", "--prompt", "hi"]);
-    assert!(
-        !output.status.success(),
-        "Bad rules path must exit non-zero"
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "Bad rules path must exit with code 1"
     );
 }
 
