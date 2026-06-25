@@ -254,7 +254,116 @@ impl OpenRouterTransport for MockTransport {
     }
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────
+// ── Feature-gated HTTP transport ─────────────────────────────────────
+
+#[cfg(feature = "openrouter-http")]
+pub use http_transport::ReqwestOpenRouterTransport;
+
+#[cfg(feature = "openrouter-http")]
+mod http_transport {
+    use super::*;
+
+    pub struct ReqwestOpenRouterTransport {
+        client: reqwest::blocking::Client,
+        base_url: String,
+    }
+
+    impl ReqwestOpenRouterTransport {
+        pub fn new(config: &ResolvedLlmProviderConfig) -> Result<Self, OpenRouterError> {
+            let client = reqwest::blocking::Client::builder()
+                .timeout(std::time::Duration::from_secs(config.timeout_seconds))
+                .build()
+                .map_err(|e| OpenRouterError::TransportFailed(sanitize_reqwest_error(&e)))?;
+            let base_url = config
+                .base_url
+                .clone()
+                .unwrap_or_else(|| "https://openrouter.ai/api/v1".into());
+            Ok(ReqwestOpenRouterTransport { client, base_url })
+        }
+    }
+
+    impl OpenRouterTransport for ReqwestOpenRouterTransport {
+        fn send(
+            &self,
+            request: &OpenRouterChatRequest,
+            api_key: &str,
+        ) -> Result<OpenRouterChatResponse, OpenRouterError> {
+            let url = format!("{}/chat/completions", self.base_url);
+            let resp = self
+                .client
+                .post(&url)
+                .header("Authorization", format!("Bearer {}", api_key))
+                .header("Content-Type", "application/json")
+                .json(request)
+                .send()
+                .map_err(|e| OpenRouterError::TransportFailed(sanitize_reqwest_error(&e)))?;
+
+            let status = resp.status();
+            if status.is_client_error() || status.is_server_error() {
+                return Err(map_http_status(status));
+            }
+
+            resp.json::<OpenRouterChatResponse>()
+                .map_err(|e| OpenRouterError::InvalidResponse(sanitize_json_error(&e)))
+        }
+    }
+
+    fn sanitize_reqwest_error(e: &reqwest::Error) -> String {
+        if e.is_timeout() {
+            "request timed out".into()
+        } else if e.is_connect() {
+            "connection failed".into()
+        } else if e.is_decode() {
+            "invalid response format".into()
+        } else {
+            "transport error".into()
+        }
+    }
+
+    fn sanitize_json_error(_e: &reqwest::Error) -> String {
+        "response could not be parsed as valid JSON".into()
+    }
+
+    fn map_http_status(status: reqwest::StatusCode) -> OpenRouterError {
+        match status.as_u16() {
+            401 => OpenRouterError::TransportFailed("unauthorized (401)".into()),
+            402 => OpenRouterError::TransportFailed("payment required (402)".into()),
+            408 => OpenRouterError::TransportFailed("request timed out (408)".into()),
+            413 => OpenRouterError::TransportFailed("request too large (413)".into()),
+            429 => OpenRouterError::TransportFailed("rate limited (429)".into()),
+            500..=599 => OpenRouterError::TransportFailed("upstream service unavailable".into()),
+            _ => OpenRouterError::TransportFailed(format!("HTTP {}", status.as_u16())),
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        /// Test that the filtered error messages contain safe HTTP statuses but no URL.
+        #[test]
+        fn test_map_http_status_401_returns_unauthorized() {
+            let err = map_http_status(reqwest::StatusCode::UNAUTHORIZED);
+            let msg = err.to_string();
+            assert!(msg.contains("401"));
+            assert!(!msg.contains("Bearer"));
+        }
+
+        #[test]
+        fn test_map_http_status_429_returns_rate_limited() {
+            let err = map_http_status(reqwest::StatusCode::TOO_MANY_REQUESTS);
+            assert!(err.to_string().contains("429"));
+        }
+
+        #[test]
+        fn test_map_http_status_5xx_returns_upstream_unavailable() {
+            let err = map_http_status(reqwest::StatusCode::BAD_GATEWAY);
+            assert!(err.to_string().contains("upstream"));
+        }
+    }
+}
+
+// ── Tests (mock, always compiled) ────────────────────────────────────
 
 #[cfg(test)]
 mod tests {

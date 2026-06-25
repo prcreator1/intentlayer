@@ -154,6 +154,18 @@ OpenRouter support is added as an explicit provider adapter implementing
 - Provider output still goes through IntentLayer parser and invention guard
 - No live API calls unless explicitly configured
 
+## Feature-Gated OpenRouter HTTP Transport
+
+Real OpenRouter HTTP transport exists only behind the `openrouter-http`
+feature. The feature is disabled by default.
+
+- Normal compile remains deterministic/local
+- Tests do not make live network calls
+- API keys come from environment/runtime config only
+- API keys are never stored, printed, committed, or included in errors
+- HTTP errors are sanitized (status codes only, no URL/body/headers)
+- Provider output still goes through parser and invention guard
+
 ## Runtime LLM Provider Config
 
 Future LLM providers are configured at runtime. Raw API keys are read from

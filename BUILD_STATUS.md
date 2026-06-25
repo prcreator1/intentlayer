@@ -622,3 +622,29 @@ is explicit opt-in via `compile_with_llm_orchestration()`.
 
 ### Test Results
 **164 tests: 164 passed, 0 failed, 0 ignored**
+
+---
+
+## Phase 018 — Feature-Gated OpenRouter HTTP Transport
+
+### What Changed
+- Added `openrouter-http` feature gate (disabled by default)
+- `ReqwestOpenRouterTransport` implements `OpenRouterTransport` via `reqwest`
+- Sanitized HTTP error mapping: status codes only, no URL/body/headers/keys
+- All errors filter out API keys, request/response bodies, authorization headers
+- `Cargo.toml`: reqwest 0.12 as optional dep (blocking, json, rustls-tls)
+- 3 HTTP error mapping tests (401, 429, 5xx)
+- CI passes: `--no-default-features`, `--features openrouter-http`, default
+
+### Real API Calls?
+No live calls in tests. No default network. Explicit opt-in via feature gate.
+
+### Test Results
+- **166 tests (default) / 169 tests (openrouter-http feature)**
+- All pass, 0 failed, 0 ignored
+
+### Safety
+- API keys from runtime config only — never in errors, Debug, or logs
+- HTTP errors: status codes only (401, 402, 408, 413, 429, 5xx)
+- No raw request/response bodies in errors
+- No OAuth, no classifier changes, default compile unchanged
