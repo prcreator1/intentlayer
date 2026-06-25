@@ -47,395 +47,527 @@ pub struct Classification {
     pub rule_id: Option<String>,
 }
 
-// TODO(v0.1): Hardcoded seed heuristic. Replace with learned model or
-// data-driven frequency table in a future version.
-/// Map of action keywords → (category, mode).
-/// Ordered from most specific (compound phrases) to generic (single words).
-fn keyword_map() -> Vec<(&'static str, &'static str, Mode)> {
-    vec![
-        (
-            "carry on",
-            "continuation_previous_plan",
-            Mode::MinimalCompile,
-        ),
-        (
-            "where we left off",
-            "continuation_previous_plan",
-            Mode::MinimalCompile,
-        ),
-        ("step 3", "continuation_previous_plan", Mode::LocalCompile),
-        // Compound keywords first — most specific
-        ("undefined is not", "repair_debug", Mode::LocalCompile),
-        ("memory leak", "repair_debug", Mode::LocalCompile),
-        ("returns 500", "repair_debug", Mode::LocalCompile),
-        ("something is wrong", "repair_debug", Mode::LocalCompile),
-        ("this error is back", "repair_debug", Mode::LocalCompile),
-        (
-            "this error keeps happening",
-            "repair_debug",
-            Mode::LocalCompile,
-        ),
-        ("same issue", "repair_debug", Mode::LocalCompile),
-        ("was working before", "repair_debug", Mode::LocalCompile),
-        ("i think i have broken", "repair_debug", Mode::LocalCompile),
-        ("logs show", "error_log_fixing", Mode::LocalCompile),
-        ("traceback", "error_log_fixing", Mode::LocalCompile),
-        ("same error again", "error_log_fixing", Mode::LocalCompile),
-        ("this button", "ui_ux_fix", Mode::LocalCompile),
-        ("make it look better", "ui_ux_fix", Mode::LocalCompile),
-        ("fix the ui", "ui_ux_fix", Mode::LocalCompile),
-        ("update ui", "ui_ux_fix", Mode::LocalCompile),
-        ("nav bar", "ui_ux_fix", Mode::LocalCompile),
-        ("dropdown", "ui_ux_fix", Mode::LocalCompile),
-        ("modal dialog", "ui_ux_fix", Mode::LocalCompile),
-        ("api endpoint", "backend_api_database", Mode::LocalCompile),
-        ("database model", "backend_api_database", Mode::LocalCompile),
-        ("join table", "backend_api_database", Mode::LocalCompile),
-        (
-            "search endpoint",
-            "backend_api_database",
-            Mode::LocalCompile,
-        ),
-        (
-            "connect backend",
-            "feature_implementation",
-            Mode::LocalCompile,
-        ),
-        ("add auth", "feature_implementation", Mode::LocalCompile),
-        ("add payment", "feature_implementation", Mode::LocalCompile),
-        (
-            "add logging",
-            "production_readiness_hardening",
-            Mode::LocalCompile,
-        ),
-        (
-            "add error handling",
-            "production_readiness_hardening",
-            Mode::LocalCompile,
-        ),
-        (
-            "add health check",
-            "deployment_config_environment",
-            Mode::LocalCompile,
-        ),
-        (
-            "add dark mode",
-            "feature_implementation",
-            Mode::LocalCompile,
-        ),
-        (
-            "environment variable",
-            "deployment_config_environment",
-            Mode::LocalCompile,
-        ),
-        (
-            "dockerfile",
-            "deployment_config_environment",
-            Mode::LocalCompile,
-        ),
-        (
-            "set up ci",
-            "deployment_config_environment",
-            Mode::LocalCompile,
-        ),
-        (
-            "deployment is broken",
-            "deployment_config_environment",
-            Mode::LocalCompile,
-        ),
-        (
-            "don't break what works",
-            "commit_push_review",
-            Mode::LocalCompile,
-        ),
-        (
-            "check if safe to commit",
-            "commit_push_review",
-            Mode::LocalCompile,
-        ),
-        ("commit if safe", "commit_push_review", Mode::LocalCompile),
-        (
-            "review my changes",
-            "commit_push_review",
-            Mode::LocalCompile,
-        ),
-        (
-            "reduce bundle",
-            "performance_optimization",
-            Mode::LocalCompile,
-        ),
-        (
-            "reduce docker",
-            "performance_optimization",
-            Mode::LocalCompile,
-        ),
-        (
-            "optimize this",
-            "performance_optimization",
-            Mode::LocalCompile,
-        ),
-        (
-            "make it faster",
-            "performance_optimization",
-            Mode::LocalCompile,
-        ),
-        ("api key", "security_permissions_auth", Mode::LocalCompile),
-        (
-            "rate limit",
-            "security_permissions_auth",
-            Mode::LocalCompile,
-        ),
-        ("add rate", "security_permissions_auth", Mode::LocalCompile),
-        ("tidy up", "refactor_cleanup", Mode::LocalCompile),
-        ("split this", "refactor_cleanup", Mode::LocalCompile),
-        ("normalize the", "refactor_cleanup", Mode::LocalCompile),
-        ("extract this", "refactor_cleanup", Mode::LocalCompile),
-        ("refactor this", "refactor_cleanup", Mode::LocalCompile),
-        ("clean up this", "refactor_cleanup", Mode::LocalCompile),
-        (
-            "run tests and fix",
-            "testing_test_failure",
-            Mode::LocalCompile,
-        ),
-        (
-            "tests are flaky",
-            "testing_test_failure",
-            Mode::LocalCompile,
-        ),
-        ("fix tests", "testing_test_failure", Mode::LocalCompile),
-        ("add tests", "testing_test_failure", Mode::LocalCompile),
-        (
-            "make tests pass",
-            "testing_test_failure",
-            Mode::LocalCompile,
-        ),
-        ("api docs", "documentation_explanation", Mode::LocalCompile),
-        (
-            "write readme",
-            "documentation_explanation",
-            Mode::LocalCompile,
-        ),
-        ("jsdoc", "documentation_explanation", Mode::LocalCompile),
-        ("add jsdoc", "documentation_explanation", Mode::LocalCompile),
-        (
-            "explain this",
-            "documentation_explanation",
-            Mode::LocalCompile,
-        ),
-        (
-            "document this",
-            "documentation_explanation",
-            Mode::LocalCompile,
-        ),
-        (
-            "add comments",
-            "documentation_explanation",
-            Mode::LocalCompile,
-        ),
-        // Architecture / planning
-        (
-            "how should i structure",
-            "architecture_planning",
-            Mode::LlmCompile,
-        ),
-        (
-            "design the system",
-            "architecture_planning",
-            Mode::LlmCompile,
-        ),
-        (
-            "design architecture",
-            "architecture_planning",
-            Mode::LlmCompile,
-        ),
-        (
-            "migrate to new server",
-            "deployment_config_environment",
-            Mode::LlmCompile,
-        ),
-        // Missing generalization keywords
-        (
-            "push realtime",
-            "feature_implementation",
-            Mode::LocalCompile,
-        ),
-        (
-            "design a notification",
-            "architecture_planning",
-            Mode::LlmCompile,
-        ),
-        (
-            "make sure this",
-            "production_readiness_hardening",
-            Mode::LocalCompile,
-        ),
-        (
-            "circuit breaker",
-            "production_readiness_hardening",
-            Mode::LocalCompile,
-        ),
-        (
-            "add retries",
-            "production_readiness_hardening",
-            Mode::LocalCompile,
-        ),
-        (
-            "coverage dropped",
-            "testing_test_failure",
-            Mode::LocalCompile,
-        ),
-        (
-            "integration tests fail",
-            "testing_test_failure",
-            Mode::LocalCompile,
-        ),
-        ("unit tests for", "testing_test_failure", Mode::LocalCompile),
-        (
-            "staging env",
-            "deployment_config_environment",
-            Mode::LocalCompile,
-        ),
-        (
-            "ci pipeline",
-            "deployment_config_environment",
-            Mode::LocalCompile,
-        ),
-        (
-            "docker compose",
-            "deployment_config_environment",
-            Mode::LocalCompile,
-        ),
-        ("code review", "commit_push_review", Mode::LocalCompile),
-        ("commit all my", "commit_push_review", Mode::LocalCompile),
-        (
-            "speed it up",
-            "performance_optimization",
-            Mode::LocalCompile,
-        ),
-        ("add 2fa", "security_permissions_auth", Mode::LocalCompile),
-        (
-            "lock out users",
-            "security_permissions_auth",
-            Mode::LocalCompile,
-        ),
-        (
-            "admin panel",
-            "security_permissions_auth",
-            Mode::LocalCompile,
-        ),
-        (
-            "inline comments",
-            "documentation_explanation",
-            Mode::LocalCompile,
-        ),
-        (
-            "explain how",
-            "documentation_explanation",
-            Mode::LocalCompile,
-        ),
-        (
-            "create an endpoint",
-            "backend_api_database",
-            Mode::LocalCompile,
-        ),
-        // Keywords that DISQUALIFY "explain" → error_log
-        (
-            "explain this error",
-            "documentation_explanation",
-            Mode::LocalCompile,
-        ),
-        // Specific review / cleanup phrases — higher priority than generic
-        ("review this pr", "commit_push_review", Mode::LocalCompile),
-        (
-            "review current diff",
-            "commit_push_review",
-            Mode::LocalCompile,
-        ),
-        (
-            "review the branch",
-            "commit_push_review",
-            Mode::LocalCompile,
-        ),
-        ("clean up auth", "refactor_cleanup", Mode::LocalCompile),
-        ("clean up dashboard", "refactor_cleanup", Mode::LocalCompile),
-        (
-            "clean up the parser",
-            "refactor_cleanup",
-            Mode::LocalCompile,
-        ),
-        // Generic single-word keywords — lower priority
-        ("fix", "repair_debug", Mode::LocalCompile),
-        ("broken", "repair_debug", Mode::LocalCompile),
-        ("bug", "repair_debug", Mode::LocalCompile),
-        ("error", "error_log_fixing", Mode::LocalCompile),
-        ("traceback", "error_log_fixing", Mode::LocalCompile),
-        ("refactor", "refactor_cleanup", Mode::LocalCompile),
-        ("clean up", "refactor_cleanup", Mode::LocalCompile),
-        (
-            "production",
-            "production_readiness_hardening",
-            Mode::LocalCompile,
-        ),
-        (
-            "harden",
-            "production_readiness_hardening",
-            Mode::LocalCompile,
-        ),
-        (
-            "robust",
-            "production_readiness_hardening",
-            Mode::LocalCompile,
-        ),
-        ("commit", "commit_push_review", Mode::LocalCompile),
-        ("review", "commit_push_review", Mode::LocalCompile),
-        ("push", "commit_push_review", Mode::LocalCompile),
-        ("optimize", "performance_optimization", Mode::LocalCompile),
-        ("faster", "performance_optimization", Mode::LocalCompile),
-        (
-            "performance",
-            "performance_optimization",
-            Mode::LocalCompile,
-        ),
-        ("secure", "security_permissions_auth", Mode::LocalCompile),
-        ("rbac", "security_permissions_auth", Mode::LocalCompile),
-        (
-            "permission",
-            "security_permissions_auth",
-            Mode::LocalCompile,
-        ),
-        ("document", "documentation_explanation", Mode::LocalCompile),
-        ("explain", "documentation_explanation", Mode::LocalCompile),
-        ("readme", "documentation_explanation", Mode::LocalCompile),
-        ("design", "architecture_planning", Mode::LlmCompile),
-        ("structure", "architecture_planning", Mode::LlmCompile),
-        ("microservice", "architecture_planning", Mode::LlmCompile),
-        ("migrate", "deployment_config_environment", Mode::LlmCompile),
-        ("pagination", "backend_api_database", Mode::LocalCompile),
-        ("add search", "feature_implementation", Mode::LocalCompile),
-        (
-            "add file upload",
-            "feature_implementation",
-            Mode::LocalCompile,
-        ),
-        ("add email", "feature_implementation", Mode::LocalCompile),
-        (
-            "add notifications",
-            "feature_implementation",
-            Mode::LocalCompile,
-        ),
-        ("add users", "feature_implementation", Mode::LocalCompile),
-        ("add csv", "feature_implementation", Mode::LocalCompile),
-        ("add i18n", "feature_implementation", Mode::LocalCompile),
-        ("add social", "feature_implementation", Mode::LocalCompile),
-        ("add image", "feature_implementation", Mode::LocalCompile),
-        (
-            "implement the",
-            "feature_implementation",
-            Mode::LocalCompile,
-        ),
-        ("button is misaligned", "ui_ux_fix", Mode::LocalCompile),
-        ("phase", "continuation_previous_plan", Mode::LocalCompile),
+// ── Keyword routing tables ─────────────────────────────────────────
+// Organized by category for maintainability.  Keyword precedence is
+// preserved by the concatenation order in specific_phrases() and
+// generic_keywords(): longer / more-specific phrases first.
+//
+// TODO(v0.1): Replace hardcoded tables with a trained classifier model.
+
+type Phrase = (&'static str, &'static str, Mode);
+
+// ── Continuation / minimal-compile triggers ─────────────────────────
+
+const CONTINUATION_PHRASES: &[Phrase] = &[
+    (
+        "carry on",
+        "continuation_previous_plan",
+        Mode::MinimalCompile,
+    ),
+    (
+        "where we left off",
+        "continuation_previous_plan",
+        Mode::MinimalCompile,
+    ),
+    ("step 3", "continuation_previous_plan", Mode::LocalCompile),
+];
+
+// ── Compound phrase tables (specific → beats generic) ──────────────
+
+const REPAIR_SPECIFIC: &[Phrase] = &[
+    ("undefined is not", "repair_debug", Mode::LocalCompile),
+    ("memory leak", "repair_debug", Mode::LocalCompile),
+    ("returns 500", "repair_debug", Mode::LocalCompile),
+    ("something is wrong", "repair_debug", Mode::LocalCompile),
+    ("this error is back", "repair_debug", Mode::LocalCompile),
+    (
+        "this error keeps happening",
+        "repair_debug",
+        Mode::LocalCompile,
+    ),
+    ("same issue", "repair_debug", Mode::LocalCompile),
+    ("was working before", "repair_debug", Mode::LocalCompile),
+    ("i think i have broken", "repair_debug", Mode::LocalCompile),
+];
+
+const ERROR_LOG_SPECIFIC: &[Phrase] = &[
+    ("logs show", "error_log_fixing", Mode::LocalCompile),
+    ("same error again", "error_log_fixing", Mode::LocalCompile),
+];
+
+const UI_SPECIFIC: &[Phrase] = &[
+    ("this button", "ui_ux_fix", Mode::LocalCompile),
+    ("make it look better", "ui_ux_fix", Mode::LocalCompile),
+    ("fix the ui", "ui_ux_fix", Mode::LocalCompile),
+    ("update ui", "ui_ux_fix", Mode::LocalCompile),
+    ("nav bar", "ui_ux_fix", Mode::LocalCompile),
+    ("dropdown", "ui_ux_fix", Mode::LocalCompile),
+    ("modal dialog", "ui_ux_fix", Mode::LocalCompile),
+    ("button is misaligned", "ui_ux_fix", Mode::LocalCompile),
+];
+
+const BACKEND_SPECIFIC: &[Phrase] = &[
+    ("api endpoint", "backend_api_database", Mode::LocalCompile),
+    ("database model", "backend_api_database", Mode::LocalCompile),
+    ("join table", "backend_api_database", Mode::LocalCompile),
+    (
+        "search endpoint",
+        "backend_api_database",
+        Mode::LocalCompile,
+    ),
+    (
+        "create an endpoint",
+        "backend_api_database",
+        Mode::LocalCompile,
+    ),
+    ("pagination", "backend_api_database", Mode::LocalCompile),
+];
+
+const FEATURE_SPECIFIC: &[Phrase] = &[
+    (
+        "connect backend",
+        "feature_implementation",
+        Mode::LocalCompile,
+    ),
+    ("add auth", "feature_implementation", Mode::LocalCompile),
+    ("add payment", "feature_implementation", Mode::LocalCompile),
+    (
+        "add dark mode",
+        "feature_implementation",
+        Mode::LocalCompile,
+    ),
+    (
+        "push realtime",
+        "feature_implementation",
+        Mode::LocalCompile,
+    ),
+    ("add search", "feature_implementation", Mode::LocalCompile),
+    (
+        "add file upload",
+        "feature_implementation",
+        Mode::LocalCompile,
+    ),
+    ("add email", "feature_implementation", Mode::LocalCompile),
+    (
+        "add notifications",
+        "feature_implementation",
+        Mode::LocalCompile,
+    ),
+    ("add users", "feature_implementation", Mode::LocalCompile),
+    ("add csv", "feature_implementation", Mode::LocalCompile),
+    ("add i18n", "feature_implementation", Mode::LocalCompile),
+    ("add social", "feature_implementation", Mode::LocalCompile),
+    ("add image", "feature_implementation", Mode::LocalCompile),
+    (
+        "implement the",
+        "feature_implementation",
+        Mode::LocalCompile,
+    ),
+];
+
+const PRODUCTION_SPECIFIC: &[Phrase] = &[
+    (
+        "add logging",
+        "production_readiness_hardening",
+        Mode::LocalCompile,
+    ),
+    (
+        "add error handling",
+        "production_readiness_hardening",
+        Mode::LocalCompile,
+    ),
+    (
+        "make sure this",
+        "production_readiness_hardening",
+        Mode::LocalCompile,
+    ),
+    (
+        "circuit breaker",
+        "production_readiness_hardening",
+        Mode::LocalCompile,
+    ),
+    (
+        "add retries",
+        "production_readiness_hardening",
+        Mode::LocalCompile,
+    ),
+];
+
+const DEPLOY_SPECIFIC: &[Phrase] = &[
+    (
+        "add health check",
+        "deployment_config_environment",
+        Mode::LocalCompile,
+    ),
+    (
+        "environment variable",
+        "deployment_config_environment",
+        Mode::LocalCompile,
+    ),
+    (
+        "dockerfile",
+        "deployment_config_environment",
+        Mode::LocalCompile,
+    ),
+    (
+        "set up ci",
+        "deployment_config_environment",
+        Mode::LocalCompile,
+    ),
+    (
+        "deployment is broken",
+        "deployment_config_environment",
+        Mode::LocalCompile,
+    ),
+    (
+        "staging env",
+        "deployment_config_environment",
+        Mode::LocalCompile,
+    ),
+    (
+        "ci pipeline",
+        "deployment_config_environment",
+        Mode::LocalCompile,
+    ),
+    (
+        "docker compose",
+        "deployment_config_environment",
+        Mode::LocalCompile,
+    ),
+];
+
+const COMMIT_SPECIFIC: &[Phrase] = &[
+    (
+        "don't break what works",
+        "commit_push_review",
+        Mode::LocalCompile,
+    ),
+    (
+        "check if safe to commit",
+        "commit_push_review",
+        Mode::LocalCompile,
+    ),
+    ("commit if safe", "commit_push_review", Mode::LocalCompile),
+    (
+        "review my changes",
+        "commit_push_review",
+        Mode::LocalCompile,
+    ),
+    ("code review", "commit_push_review", Mode::LocalCompile),
+    ("commit all my", "commit_push_review", Mode::LocalCompile),
+    ("review this pr", "commit_push_review", Mode::LocalCompile),
+    (
+        "review current diff",
+        "commit_push_review",
+        Mode::LocalCompile,
+    ),
+    (
+        "review the branch",
+        "commit_push_review",
+        Mode::LocalCompile,
+    ),
+];
+
+const PERF_SPECIFIC: &[Phrase] = &[
+    (
+        "reduce bundle",
+        "performance_optimization",
+        Mode::LocalCompile,
+    ),
+    (
+        "reduce docker",
+        "performance_optimization",
+        Mode::LocalCompile,
+    ),
+    (
+        "optimize this",
+        "performance_optimization",
+        Mode::LocalCompile,
+    ),
+    (
+        "make it faster",
+        "performance_optimization",
+        Mode::LocalCompile,
+    ),
+    (
+        "speed it up",
+        "performance_optimization",
+        Mode::LocalCompile,
+    ),
+];
+
+const SECURITY_SPECIFIC: &[Phrase] = &[
+    ("api key", "security_permissions_auth", Mode::LocalCompile),
+    (
+        "rate limit",
+        "security_permissions_auth",
+        Mode::LocalCompile,
+    ),
+    ("add rate", "security_permissions_auth", Mode::LocalCompile),
+    ("add 2fa", "security_permissions_auth", Mode::LocalCompile),
+    (
+        "lock out users",
+        "security_permissions_auth",
+        Mode::LocalCompile,
+    ),
+    (
+        "admin panel",
+        "security_permissions_auth",
+        Mode::LocalCompile,
+    ),
+];
+
+const REFACTOR_SPECIFIC: &[Phrase] = &[
+    ("tidy up", "refactor_cleanup", Mode::LocalCompile),
+    ("split this", "refactor_cleanup", Mode::LocalCompile),
+    ("normalize the", "refactor_cleanup", Mode::LocalCompile),
+    ("extract this", "refactor_cleanup", Mode::LocalCompile),
+    ("refactor this", "refactor_cleanup", Mode::LocalCompile),
+    ("clean up this", "refactor_cleanup", Mode::LocalCompile),
+    ("clean up auth", "refactor_cleanup", Mode::LocalCompile),
+    ("clean up dashboard", "refactor_cleanup", Mode::LocalCompile),
+    (
+        "clean up the parser",
+        "refactor_cleanup",
+        Mode::LocalCompile,
+    ),
+];
+
+const TESTING_SPECIFIC: &[Phrase] = &[
+    (
+        "run tests and fix",
+        "testing_test_failure",
+        Mode::LocalCompile,
+    ),
+    (
+        "tests are flaky",
+        "testing_test_failure",
+        Mode::LocalCompile,
+    ),
+    ("fix tests", "testing_test_failure", Mode::LocalCompile),
+    ("add tests", "testing_test_failure", Mode::LocalCompile),
+    (
+        "make tests pass",
+        "testing_test_failure",
+        Mode::LocalCompile,
+    ),
+    (
+        "coverage dropped",
+        "testing_test_failure",
+        Mode::LocalCompile,
+    ),
+    (
+        "integration tests fail",
+        "testing_test_failure",
+        Mode::LocalCompile,
+    ),
+    ("unit tests for", "testing_test_failure", Mode::LocalCompile),
+];
+
+const DOCS_SPECIFIC: &[Phrase] = &[
+    ("api docs", "documentation_explanation", Mode::LocalCompile),
+    (
+        "write readme",
+        "documentation_explanation",
+        Mode::LocalCompile,
+    ),
+    ("jsdoc", "documentation_explanation", Mode::LocalCompile),
+    ("add jsdoc", "documentation_explanation", Mode::LocalCompile),
+    (
+        "explain this",
+        "documentation_explanation",
+        Mode::LocalCompile,
+    ),
+    (
+        "document this",
+        "documentation_explanation",
+        Mode::LocalCompile,
+    ),
+    (
+        "add comments",
+        "documentation_explanation",
+        Mode::LocalCompile,
+    ),
+    (
+        "inline comments",
+        "documentation_explanation",
+        Mode::LocalCompile,
+    ),
+    (
+        "explain how",
+        "documentation_explanation",
+        Mode::LocalCompile,
+    ),
+    (
+        "explain this error",
+        "documentation_explanation",
+        Mode::LocalCompile,
+    ),
+];
+
+const ARCH_SPECIFIC: &[Phrase] = &[
+    (
+        "how should i structure",
+        "architecture_planning",
+        Mode::LlmCompile,
+    ),
+    (
+        "design the system",
+        "architecture_planning",
+        Mode::LlmCompile,
+    ),
+    (
+        "design architecture",
+        "architecture_planning",
+        Mode::LlmCompile,
+    ),
+    (
+        "design a notification",
+        "architecture_planning",
+        Mode::LlmCompile,
+    ),
+    (
+        "migrate to new server",
+        "deployment_config_environment",
+        Mode::LlmCompile,
+    ),
+];
+
+const HANDLES_NETWORK: &[Phrase] = &[(
+    "handles network failures",
+    "production_readiness_hardening",
+    Mode::LocalCompile,
+)];
+
+// ── Generic single-word fallback keywords ───────────────────────────
+
+const REPAIR_GENERIC: &[Phrase] = &[
+    ("fix", "repair_debug", Mode::LocalCompile),
+    ("broken", "repair_debug", Mode::LocalCompile),
+    ("bug", "repair_debug", Mode::LocalCompile),
+];
+
+const ERROR_LOG_GENERIC: &[Phrase] = &[
+    ("error", "error_log_fixing", Mode::LocalCompile),
+    ("traceback", "error_log_fixing", Mode::LocalCompile),
+];
+
+const REFACTOR_GENERIC: &[Phrase] = &[
+    ("refactor", "refactor_cleanup", Mode::LocalCompile),
+    ("clean up", "refactor_cleanup", Mode::LocalCompile),
+];
+
+const PRODUCTION_GENERIC: &[Phrase] = &[
+    (
+        "production",
+        "production_readiness_hardening",
+        Mode::LocalCompile,
+    ),
+    (
+        "harden",
+        "production_readiness_hardening",
+        Mode::LocalCompile,
+    ),
+    (
+        "robust",
+        "production_readiness_hardening",
+        Mode::LocalCompile,
+    ),
+];
+
+const COMMIT_GENERIC: &[Phrase] = &[
+    ("commit", "commit_push_review", Mode::LocalCompile),
+    ("review", "commit_push_review", Mode::LocalCompile),
+    ("push", "commit_push_review", Mode::LocalCompile),
+];
+
+const PERF_GENERIC: &[Phrase] = &[
+    ("optimize", "performance_optimization", Mode::LocalCompile),
+    ("faster", "performance_optimization", Mode::LocalCompile),
+    (
+        "performance",
+        "performance_optimization",
+        Mode::LocalCompile,
+    ),
+];
+
+const SECURITY_GENERIC: &[Phrase] = &[
+    ("secure", "security_permissions_auth", Mode::LocalCompile),
+    ("rbac", "security_permissions_auth", Mode::LocalCompile),
+    (
+        "permission",
+        "security_permissions_auth",
+        Mode::LocalCompile,
+    ),
+];
+
+const DOCS_GENERIC: &[Phrase] = &[
+    ("document", "documentation_explanation", Mode::LocalCompile),
+    ("explain", "documentation_explanation", Mode::LocalCompile),
+    ("readme", "documentation_explanation", Mode::LocalCompile),
+];
+
+const ARCH_GENERIC: &[Phrase] = &[
+    ("design", "architecture_planning", Mode::LlmCompile),
+    ("structure", "architecture_planning", Mode::LlmCompile),
+    ("microservice", "architecture_planning", Mode::LlmCompile),
+];
+
+const DEPLOY_GENERIC: &[Phrase] = &[("migrate", "deployment_config_environment", Mode::LlmCompile)];
+
+const CONTINUATION_GENERIC: &[Phrase] =
+    &[("phase", "continuation_previous_plan", Mode::LocalCompile)];
+
+// ── Combined maps (preserving specificity precedence) ──────────────
+
+/// Specific compound phrases — checked before generic keywords.
+fn specific_phrases() -> Vec<Phrase> {
+    [
+        // Continuation triggers
+        CONTINUATION_PHRASES,
+        // Compound phrases per category
+        REPAIR_SPECIFIC,
+        ERROR_LOG_SPECIFIC,
+        UI_SPECIFIC,
+        BACKEND_SPECIFIC,
+        FEATURE_SPECIFIC,
+        PRODUCTION_SPECIFIC,
+        HANDLES_NETWORK,
+        DEPLOY_SPECIFIC,
+        COMMIT_SPECIFIC,
+        PERF_SPECIFIC,
+        SECURITY_SPECIFIC,
+        REFACTOR_SPECIFIC,
+        TESTING_SPECIFIC,
+        DOCS_SPECIFIC,
+        ARCH_SPECIFIC,
     ]
+    .concat()
+}
+
+/// Generic single-word fallback keywords — lower priority.
+fn generic_keywords() -> Vec<Phrase> {
+    [
+        REPAIR_GENERIC,
+        ERROR_LOG_GENERIC,
+        REFACTOR_GENERIC,
+        PRODUCTION_GENERIC,
+        COMMIT_GENERIC,
+        PERF_GENERIC,
+        SECURITY_GENERIC,
+        DOCS_GENERIC,
+        ARCH_GENERIC,
+        DEPLOY_GENERIC,
+        CONTINUATION_GENERIC,
+    ]
+    .concat()
+}
+
+/// Full keyword table: specific phrases first, generic fallbacks second.
+fn keyword_map() -> Vec<Phrase> {
+    let mut k = specific_phrases();
+    k.extend(generic_keywords());
+    k
 }
 
 // TODO(v0.1): Hardcoded seed list. Replace with data-driven detection from

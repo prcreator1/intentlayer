@@ -336,4 +336,35 @@ priority trade-off.
 - ~30 new keywords added — map is growing, needs restructuring
 
 ### Test Totals
-**40 tests: 40 passed, 0 failed, 0 ignored**
+**42 tests: 42 passed, 0 failed, 0 ignored**
+
+---
+
+## Phase 008 — Classifier Rule Table Refactor
+
+### What Changed
+The inline `keyword_map()` function (previously a ~390-line flat `vec![]`)
+was refactored into 34 named `const` slices organized by category:
+`REPAIR_SPECIFIC`, `ERROR_LOG_SPECIFIC`, `UI_SPECIFIC`, etc. for
+compound phrases, and `REPAIR_GENERIC`, `ERROR_LOG_GENERIC`, etc. for
+single-word fallbacks.  The `keyword_map()` function now concatenates
+`specific_phrases()` followed by `generic_keywords()`, preserving the
+original specificity ordering.
+
+### Why
+After Phase 007, the keyword list grew to ~140 entries in a single flat
+block — hard to audit, maintain, or extend.  Organizing by category makes
+it immediately clear which keywords belong to which domain and where a new
+phrase should be inserted.
+
+### Behavior Change
+**None.**  All phrase/keyword entries are identical to the Phase 007 state.
+Precedence (specific → generic, compound → single-word) is preserved by
+the concatenation order in `specific_phrases()` and `generic_keywords()`.
+
+### Accuracy (unchanged)
+- Seed: 100/100 mode, 100/100 category, 22/22 pt exact, 9/9 mc exact
+- Generalization: 90% mode, 96% category
+
+### Test Totals
+**42 tests: 42 passed, 0 failed, 0 ignored**
