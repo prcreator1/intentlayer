@@ -139,6 +139,9 @@ tests/
 
 **Post-review patch:** Codex P2 #1 fixed (JSON response instruction). Codex P2 #2 fixed (secret redaction before LLM envelope). Local secret passthrough added (marker + explicit unsafe opt-in). Raw secrets never sent to upstream LLM envelope. Normal quotes are not a bypass. 10 new envelope/redaction/passthrough tests.
 
+
+**Post-review patch:** all fallback paths now preserve original_prompt. Prose-wrapped JSON extraction is string-aware (handles /users/{id}, escaped quotes). 9 new tests added (5 fallback + 4 extraction).
+
 ### Test Results
 
 ```
@@ -551,7 +554,7 @@ a safe fallback.
 - Safety validation: `validate_compiled_prompt()` rejects empty prompts,
   meta-commentary ("as an AI..."), and excessive length.
 - README: LLM Output Parsing and Repair section.
-- 17 parser tests covering all parse/repair/fallback paths.
+- 26 parser tests covering all parse/repair/fallback paths.
 
 ### Real LLM Calls Enabled?
 **No.** No external API calls. No network. No OAuth.
@@ -563,4 +566,4 @@ a safe fallback.
 - No second LLM call during repair
 
 ### Test Results
-**116 tests: 116 passed, 0 failed, 0 ignored**
+**125 tests: 125 passed, 0 failed, 0 ignored**
