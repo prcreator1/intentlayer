@@ -175,6 +175,21 @@ intentlayer --prompt "fix parser bug" --llm --provider openrouter --api-key-env 
 - API key must come from env — no raw key CLI arg
 - `--compiled-only` works with LLM mode
 
+## Live OpenRouter Smoke Test
+
+Manual only — never runs in normal CI.
+
+```bash
+export OPENROUTER_API_KEY="<your-openrouter-api-key>"
+INTENTLAYER_RUN_LIVE_SMOKE=1 cargo test --features openrouter-http -- --ignored
+```
+
+- Requires `openrouter-http` feature
+- Requires `OPENROUTER_API_KEY` env var
+- API key is read from env only — never printed or committed
+- Verifies deterministic bypass and real llm_compile call
+- Fails if provider fallback occurs
+
 ## Feature-Gated OpenRouter HTTP Transport
 
 Real OpenRouter HTTP transport exists only behind the `openrouter-http`

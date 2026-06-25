@@ -673,3 +673,30 @@ No live calls in tests. No default network. Explicit opt-in via feature gate.
 
 ### Test Results
 **176 tests (default) / 179 tests (openrouter-http feature)**
+
+---
+
+## Phase 020 — Live OpenRouter Smoke Test
+
+### What Changed
+- `tests/live_smoke_tests.rs` — manual live smoke path for end-to-end validation
+- 2 live smoke tests (`#[ignore]`d): deterministic bypass + real llm_compile call
+- 4 smoke gating tests (always run): env var checks, key safety
+- README: Live OpenRouter Smoke Test section
+
+### Usage (manual only)
+```
+export OPENROUTER_API_KEY="<your-openrouter-api-key>"
+INTENTLAYER_RUN_LIVE_SMOKE=1 cargo test --features openrouter-http -- --ignored
+```
+
+### Safety
+- No live calls in normal CI
+- API key read from env only — never printed/committed
+- Live smoke rejects fallback JSON/provider fallback warnings
+- Proves real provider success, not just local fallback JSON
+- Deterministic prompts bypass OpenRouter even in smoke mode
+- `cfg!(not(feature))` eliminates feature-gate code at compile time
+
+### Test Results
+- **180 tests (4 live ignored) / 183 tests with feature (2 ignored)**
