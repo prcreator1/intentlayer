@@ -336,4 +336,4 @@ priority trade-off.
 - ~30 new keywords added — map is growing, needs restructuring
 
 ### Test Totals
-**38 tests: 38 passed, 0 failed, 0 ignored**
+**40 tests: 40 passed, 0 failed, 0 ignored**
