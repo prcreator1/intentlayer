@@ -180,7 +180,7 @@ intentlayer --prompt "fix parser bug" --llm --provider openrouter --api-key-env 
 Manual only — never runs in normal CI.
 
 ```bash
-export OPENROUTER_API_KEY="sk-or-..."
+export OPENROUTER_API_KEY="<your-openrouter-api-key>"
 INTENTLAYER_RUN_LIVE_SMOKE=1 cargo test --features openrouter-http -- --ignored
 ```
 
@@ -188,6 +188,7 @@ INTENTLAYER_RUN_LIVE_SMOKE=1 cargo test --features openrouter-http -- --ignored
 - Requires `OPENROUTER_API_KEY` env var
 - API key is read from env only — never printed or committed
 - Verifies deterministic bypass and real llm_compile call
+- Fails if provider fallback occurs
 
 ## Feature-Gated OpenRouter HTTP Transport
 
