@@ -39,5 +39,23 @@ jobs:
       - name: Clippy (openrouter-http feature)
         run: cargo clippy --all-targets --features openrouter-http -- -D warnings
 
+      - name: Check groq-http feature build
+        run: cargo check --features groq-http
+
+      - name: Run tests (groq-http feature)
+        run: cargo test --features groq-http
+
+      - name: Clippy (groq-http feature)
+        run: cargo clippy --all-targets --features groq-http -- -D warnings
+
+      - name: Check combined features build
+        run: cargo check --features "openrouter-http groq-http"
+
+      - name: Run tests (combined features)
+        run: cargo test --features "openrouter-http groq-http"
+
+      - name: Clippy (combined features)
+        run: cargo clippy --all-targets --features "openrouter-http groq-http" -- -D warnings
+
       - name: Check line endings / trailing whitespace
         run: git diff --check
