@@ -133,7 +133,10 @@ pub fn build_openrouter_request(
         llm_req.must_not_invent.join("\n- "),
     );
 
-    let user_msg = llm_req.instruction.clone();
+    let user_msg = format!(
+        "Instruction:\n{}\n\nRedacted original prompt:\n{}",
+        llm_req.instruction, llm_req.original_prompt
+    );
 
     let response_schema = serde_json::json!({
         "type": "object",
@@ -539,9 +542,9 @@ mod tests {
     #[test]
     fn test_request_never_contains_raw_secret() {
         let req = LlmCompileRequest {
-            original_prompt: "use sk-abc123 for auth".into(),
+            original_prompt: "use [REDACTED_SECRET] for auth".into(),
             category: "security_permissions_auth".into(),
-            instruction: "rewrite: [REDACTED_SECRET]".into(),
+            instruction: "Original prompt: [REDACTED_SECRET]".into(),
             must_preserve: vec![],
             must_not_invent: vec![],
         };
@@ -581,5 +584,40 @@ mod tests {
                 message: OpenRouterResponseMessage { content: None },
             }],
         }
+    }
+
+    #[test]
+    fn test_request_includes_original_prompt_when_instruction_is_minimal() {
+        let req = LlmCompileRequest {
+            original_prompt: "fix parser bug".into(),
+            category: "repair_debug".into(),
+            instruction: "rewrite".into(),
+            must_preserve: vec![],
+            must_not_invent: vec![],
+        };
+        let or = build_openrouter_request(&req, &mock_config());
+        let user_msg = &or.messages[1].content;
+        assert!(
+            user_msg.contains("fix parser bug"),
+            "User message must contain the original prompt even when instruction is minimal: {}",
+            user_msg
+        );
+    }
+
+    #[test]
+    fn test_request_sent_through_transport_contains_prompt() {
+        let req = LlmCompileRequest {
+            original_prompt: "refactor the parser".into(),
+            category: "refactor_cleanup".into(),
+            instruction: "rewrite".into(),
+            must_preserve: vec![],
+            must_not_invent: vec![],
+        };
+        let transport = MockTransport::new(Ok(mock_chat_response("ok")));
+        let provider = OpenRouterProvider::new(mock_config(), transport);
+        let _ = provider.compile(&req);
+        let captured = provider.transport.captured_request.borrow();
+        let body = serde_json::to_string(captured.as_ref().unwrap()).unwrap();
+        assert!(body.contains("refactor the parser"));
     }
 }
