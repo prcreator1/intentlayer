@@ -133,6 +133,9 @@ tests/
 └── benchmark_tests.rs  # 9 benchmark tests
 ```
 
+
+**Post-review patch:** api_key_env is now validated as an env-var name before lookup. Invalid names (containing hyphens, spaces, =, /, etc.) are rejected. Errors redact the invalid value. 6 new validation tests added.
+
 ### Test Results
 
 ```
@@ -478,3 +481,31 @@ a safe fallback.
 
 ### Test Results
 **64 tests: 64 passed, 0 failed, 0 ignored**
+
+---
+
+## Phase 013 — Runtime LLM Provider Config
+
+### What Changed
+- New `src/llm_config.rs` module with secure runtime-only LLM provider config:
+  `LlmProviderConfig` (stores env-var names), `ResolvedLlmProviderConfig` (runtime-resolved),
+  `LlmConfigError` (typed errors), `resolve_from_env()` (reads keys at runtime).
+- `Debug` on `ResolvedLlmProviderConfig` redacts API keys to `[REDACTED]`.
+- Error messages reference env-var names only — never expose key values.
+- README: Runtime LLM Provider Config section with OpenAI-compatible and
+  Ollama examples.
+- 8 unit tests: config representation, env resolution, missing var errors,
+  Debug redaction, error message safety, no-network guarantee.
+
+### Security Rules Enforced
+- Config files store env-var names, never raw API keys
+- Credentials read at runtime via `std::env::var`
+- No OAuth, bearer tokens, or refresh tokens
+- No raw keys committed or serialized
+- `Debug` always redacts
+
+### Real LLM Calls Enabled?
+**No.** No external API calls added. No network dependency. No OAuth.
+
+### Test Results
+**78 tests: 78 passed, 0 failed, 0 ignored**
