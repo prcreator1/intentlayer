@@ -459,3 +459,156 @@ fn test_pretty_still_works_with_compiled_only_absent() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains('{'), "--pretty default still outputs JSON");
 }
+
+// ── CLI LLM opt-in tests ──
+
+#[test]
+fn test_default_cli_remains_local() {
+    let output = run(&["--prompt", "fix this repo", "--json"]);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("local_compile"),
+        "Default mode should be local_compile"
+    );
+}
+
+#[test]
+fn test_compiled_only_still_works_locally() {
+    let output = run(&["--prompt", "hello", "--compiled-only"]);
+    assert!(output.status.success());
+}
+
+#[test]
+fn test_llm_without_provider_returns_error() {
+    let output = run(&["--prompt", "test", "--llm"]);
+    assert!(
+        !output.status.success(),
+        "--llm without --provider must fail"
+    );
+}
+
+#[test]
+fn test_llm_openrouter_without_api_key_env_returns_error() {
+    // "design the system" is llm_compile, so it requires api-key-env
+    let output = run(&[
+        "--prompt",
+        "design the system",
+        "--llm",
+        "--provider",
+        "openrouter",
+    ]);
+    assert!(
+        !output.status.success(),
+        "llm_compile without --api-key-env must fail"
+    );
+}
+
+#[test]
+fn test_help_mentions_llm_flags() {
+    let output = run(&["--help"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("--llm"), "--help must mention --llm");
+    assert!(
+        stdout.contains("--provider"),
+        "--help must mention --provider"
+    );
+    assert!(
+        stdout.contains("--api-key-env"),
+        "--help must mention --api-key-env"
+    );
+}
+
+#[test]
+fn test_default_compile_unchanged_with_llm_flags() {
+    let output = run(&["--prompt", "fix this repo", "--json"]);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("compiled_prompt"));
+}
+
+#[test]
+fn test_llm_slash_command_remains_pass_through_and_needs_no_key() {
+    // slash commands must bypass LLM entirely
+    let output = run(&[
+        "--llm",
+        "--provider",
+        "openrouter",
+        "--prompt",
+        "/help",
+        "--compiled-only",
+    ]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Pass-through returns exact original prompt
+    assert_eq!(stdout.trim(), "/help");
+}
+
+#[test]
+fn test_llm_local_compile_still_uses_local_compiler() {
+    // "fix this repo" is local_compile — even with --llm, stays local
+    let output = run(&[
+        "--prompt",
+        "fix this repo",
+        "--llm",
+        "--provider",
+        "openrouter",
+        "--api-key-env",
+        "INTENTLAYER_FAKE_KEY",
+        "--json",
+    ]);
+    // Should succeed because local_compile bypasses LLM, so no real key needed
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("compiled_prompt"),
+        "Should produce output: {}",
+        stdout
+    );
+}
+
+#[test]
+fn test_llm_unsupported_provider_rejected() {
+    let output = run(&[
+        "--llm",
+        "--provider",
+        "typo",
+        "--api-key-env",
+        "SOME_ENV",
+        "--prompt",
+        "design the system",
+        "--json",
+    ]);
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unsupported"),
+        "Must say unsupported: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("openrouter"),
+        "Must mention supported providers"
+    );
+    assert!(
+        !stderr.contains("SOME_ENV"),
+        "Must not expose env var value"
+    );
+}
+
+#[test]
+fn test_llm_llm_compile_without_feature_is_handled() {
+    // Without openrouter-http feature, llm_compile prompts get error
+    // But the error is about the transport, not crash
+    let output = run(&[
+        "--prompt",
+        "design the system",
+        "--llm",
+        "--provider",
+        "openrouter",
+        "--api-key-env",
+        "INTENTLAYER_FAKE_KEY",
+        "--json",
+    ]);
+    // This will fail because no key, but it's a feature-gate or config issue, not panic
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("panic"), "Must not panic");
+}

@@ -27,6 +27,15 @@ Options:
   --json                Output compact JSON.
   --compiled-only       Print only compiled_prompt as plain text (no JSON).
                         Intended for direct handoff to downstream agents.
+  --llm                 Enable LLM-assisted compilation (opt-in).
+                        Requires --provider openrouter + --api-key-env.
+  --provider <name>     LLM provider: openrouter
+  --model <name>        Model name override (default: from config)
+  --api-key-env <ENV>   Env var name holding API key. Never a raw key.
+  --base-url <url>      Optional base URL override
+  --timeout-seconds <n> Optional timeout (default: 30)
+  --max-tokens <n>      Optional max tokens (default: 800)
+  --temperature <n>     Optional temperature (default: 0.1)
   --version             Print version and exit.
   --help                Show this help and exit.
 
@@ -39,6 +48,19 @@ struct Args {
     rules_path: PathBuf,
     json: bool,
     compiled_only: bool,
+    llm: bool,
+    provider: Option<String>,
+    #[allow(dead_code)]
+    model: Option<String>,
+    api_key_env: Option<String>,
+    #[allow(dead_code)]
+    base_url: Option<String>,
+    #[allow(dead_code)]
+    timeout_seconds: Option<u64>,
+    #[allow(dead_code)]
+    max_tokens: Option<u32>,
+    #[allow(dead_code)]
+    temperature: Option<f32>,
 }
 
 /// Manual CLI parser.  Avoids adding a dependency for v0.1.
@@ -49,6 +71,14 @@ fn parse_args() -> Result<Args, String> {
     let mut rules_path = PathBuf::from("research/transformation_rules.json");
     let mut json = false;
     let mut compiled_only = false;
+    let mut llm = false;
+    let mut provider: Option<String> = None;
+    let mut model: Option<String> = None;
+    let mut api_key_env: Option<String> = None;
+    let mut base_url: Option<String> = None;
+    let mut timeout_seconds: Option<u64> = None;
+    let mut max_tokens: Option<u32> = None;
+    let mut temperature: Option<f32> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -69,6 +99,76 @@ fn parse_args() -> Result<Args, String> {
             }
             "--compiled-only" => {
                 compiled_only = true;
+            }
+            "--llm" => {
+                llm = true;
+            }
+            "--provider" => {
+                i += 1;
+                if i >= args.len() || args[i].starts_with('-') {
+                    return Err(
+                        "Missing value for --provider. Expected: --provider openrouter".into(),
+                    );
+                }
+                provider = Some(args[i].clone());
+            }
+            "--model" => {
+                i += 1;
+                if i >= args.len() || args[i].starts_with('-') {
+                    return Err("Missing value for --model. Expected: --model gpt-4.1-mini".into());
+                }
+                model = Some(args[i].clone());
+            }
+            "--api-key-env" => {
+                i += 1;
+                if i >= args.len() || args[i].starts_with('-') {
+                    return Err(
+                        "Missing value for --api-key-env. Expected: --api-key-env OPENAI_API_KEY"
+                            .into(),
+                    );
+                }
+                api_key_env = Some(args[i].clone());
+            }
+            "--base-url" => {
+                i += 1;
+                if i >= args.len() || args[i].starts_with('-') {
+                    return Err(
+                        "Missing value for --base-url. Expected: --base-url https://...".into(),
+                    );
+                }
+                base_url = Some(args[i].clone());
+            }
+            "--timeout-seconds" => {
+                i += 1;
+                if i >= args.len() || args[i].starts_with('-') {
+                    return Err("Missing value for --timeout-seconds".into());
+                }
+                timeout_seconds =
+                    Some(args[i].parse().map_err(|_| {
+                        format!("Invalid number for --timeout-seconds: '{}'", args[i])
+                    })?);
+            }
+            "--max-tokens" => {
+                i += 1;
+                if i >= args.len() || args[i].starts_with('-') {
+                    return Err("Missing value for --max-tokens".into());
+                }
+                max_tokens = Some(
+                    args[i]
+                        .parse()
+                        .map_err(|_| format!("Invalid number for --max-tokens: '{}'", args[i]))?,
+                );
+            }
+            "--temperature" => {
+                i += 1;
+                if i >= args.len() || args[i].starts_with('-') {
+                    return Err("Missing value for --temperature".into());
+                }
+                temperature = Some(
+                    args[i]
+                        .parse()
+                        .map_err(|_| format!("Invalid number for --temperature: '{}'", args[i]))?,
+                );
             }
             "--prompt" => {
                 i += 1;
@@ -119,6 +219,14 @@ fn parse_args() -> Result<Args, String> {
         rules_path,
         json,
         compiled_only,
+        llm,
+        provider,
+        model,
+        api_key_env,
+        base_url,
+        timeout_seconds,
+        max_tokens,
+        temperature,
     })
 }
 
@@ -174,6 +282,22 @@ fn main() {
         }
     };
 
+    // Validate LLM args
+    if args.llm {
+        if args.provider.is_none() {
+            eprintln!("Error: --llm requires --provider openrouter");
+            process::exit(1);
+        }
+        let p = args.provider.as_deref().unwrap();
+        if p != "openrouter" {
+            eprintln!(
+                "Error: unsupported LLM provider '{}'. Supported providers: openrouter",
+                p
+            );
+            process::exit(1);
+        }
+    }
+
     let compiler = match load_compiler(&args.rules_path) {
         Ok(c) => c,
         Err(e) => {
@@ -190,9 +314,28 @@ fn main() {
         }
     };
 
-    let output = compiler.compile_prompt(&prompt_text);
+    // Classification — must run before deciding LLM path
+    let classification = {
+        let rules = &compiler.rules;
+        intentlayer::classifier::classify(&prompt_text, rules)
+    };
 
-    // compiled-only: plain text handoff to downstream agents
+    let llm_eligible = args.llm
+        && args.provider.as_deref() == Some("openrouter")
+        && classification.mode == intentlayer::classifier::Mode::LlmCompile;
+
+    // Only require API key when an actual LLM call will be made
+    if llm_eligible && args.api_key_env.is_none() {
+        eprintln!("Error: --llm requires --api-key-env <ENV_VAR_NAME>");
+        process::exit(1);
+    }
+
+    let output = if llm_eligible {
+        run_llm_openrouter(&prompt_text, &classification.category, &args)
+    } else {
+        compiler.compile_prompt(&prompt_text)
+    };
+
     if args.compiled_only {
         if !output.warnings.is_empty() {
             for w in &output.warnings {
@@ -211,4 +354,62 @@ fn main() {
     };
 
     println!("{}", json_out);
+}
+
+#[cfg(not(feature = "openrouter-http"))]
+fn run_llm_openrouter(
+    _prompt: &str,
+    _category: &str,
+    #[allow(unused_variables)] _args: &Args,
+) -> intentlayer::compiler::CompileOutput {
+    eprintln!("Error: OpenRouter HTTP transport is not enabled.");
+    eprintln!("Rebuild with --features openrouter-http.");
+    process::exit(1);
+}
+
+#[cfg(feature = "openrouter-http")]
+fn run_llm_openrouter(
+    prompt: &str,
+    category: &str,
+    args: &Args,
+) -> intentlayer::compiler::CompileOutput {
+    use intentlayer::llm::LlmEnvelopeOptions;
+    use intentlayer::llm_config::{resolve_from_env, LlmProviderConfig};
+    use intentlayer::llm_orchestrate::compile_with_llm_orchestration;
+    use intentlayer::openrouter::{OpenRouterProvider, ReqwestOpenRouterTransport};
+
+    let api_key_env = args.api_key_env.clone().unwrap_or_default();
+    let config = LlmProviderConfig {
+        provider: "openai-compatible".into(),
+        base_url: args
+            .base_url
+            .clone()
+            .or(Some("https://openrouter.ai/api/v1".into())),
+        model: args.model.clone().unwrap_or_else(|| "gpt-4.1-mini".into()),
+        api_key_env: Some(api_key_env),
+        timeout_seconds: args.timeout_seconds.unwrap_or(30),
+        max_tokens: args.max_tokens.unwrap_or(800),
+        temperature: args.temperature.unwrap_or(0.1),
+    };
+
+    let resolved = match resolve_from_env(&config) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+    };
+
+    let transport = match ReqwestOpenRouterTransport::new(&resolved) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            process::exit(1);
+        }
+    };
+
+    let provider = OpenRouterProvider::new(resolved, transport);
+    let opts = LlmEnvelopeOptions::default();
+
+    compile_with_llm_orchestration(prompt, category, &provider, &opts)
 }

@@ -648,3 +648,28 @@ No live calls in tests. No default network. Explicit opt-in via feature gate.
 - HTTP errors: status codes only (401, 402, 408, 413, 429, 5xx)
 - No raw request/response bodies in errors
 - No OAuth, no classifier changes, default compile unchanged
+
+---
+
+## Phase 019 — CLI LLM Opt-In Wiring
+
+### What Changed
+- `--llm`, `--provider openrouter`, `--api-key-env`, `--model`, `--base-url`,
+  `--timeout-seconds`, `--max-tokens`, `--temperature` CLI flags added
+- LLM mode wired through Phase 016 orchestration → Phase 017 OpenRouter →
+  Phase 018 HTTP transport
+- Feature-gated: without `openrouter-http` feature, `--llm openrouter`
+  returns clear error message
+- `--compiled-only` works with LLM mode
+- Default CLI behavior unchanged (local/deterministic)
+- 10 new CLI LLM tests
+
+### Safety
+- `--api-key-env` specifies env var name — never a raw key
+- No raw API key CLI arg accepted
+- API keys from env through runtime config only
+- Never printed, logged, or in error output
+- No default network calls
+
+### Test Results
+**176 tests (default) / 179 tests (openrouter-http feature)**
