@@ -833,4 +833,48 @@ mod tests {
             pct
         );
     }
+
+    // ── Regression: generic review / clean up routing ──
+
+    #[test]
+    fn test_generic_review_routes_to_commit_push_review() {
+        let compiler = build_compiler();
+        let cases = [
+            ("review this PR", "commit_push_review"),
+            ("review current diff", "commit_push_review"),
+            ("review the branch", "commit_push_review"),
+        ];
+        for (prompt, expected) in &cases {
+            let input = intentlayer::compiler::CompileInput {
+                prompt: prompt.to_string(),
+            };
+            let output = intentlayer::compiler::compile(&input, &compiler);
+            assert_eq!(
+                output.category, *expected,
+                "Generic review prompt '{}' should route to {}: got {}",
+                prompt, expected, output.category
+            );
+        }
+    }
+
+    #[test]
+    fn test_generic_clean_up_routes_to_refactor_cleanup() {
+        let compiler = build_compiler();
+        let cases = [
+            ("clean up auth module", "refactor_cleanup"),
+            ("clean up dashboard code", "refactor_cleanup"),
+            ("clean up the parser", "refactor_cleanup"),
+        ];
+        for (prompt, expected) in &cases {
+            let input = intentlayer::compiler::CompileInput {
+                prompt: prompt.to_string(),
+            };
+            let output = intentlayer::compiler::compile(&input, &compiler);
+            assert_eq!(
+                output.category, *expected,
+                "Generic clean up prompt '{}' should route to {}: got {}",
+                prompt, expected, output.category
+            );
+        }
+    }
 }
