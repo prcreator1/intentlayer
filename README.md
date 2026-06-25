@@ -118,9 +118,11 @@ temperature = 0.1
 
 **Security rules:**
 - Config stores env-var names, never raw API keys
+- `api_key_env` must be a valid environment variable name (ASCII letters, digits, `_`; starts with letter or `_`)
+- Invalid env-var names are rejected before lookup — errors redact the invalid value
 - Credentials read at runtime via `std::env::var`
 - `Debug` output redacts keys to `[REDACTED]`
-- Error messages reference env var names only — never key values
+- Error messages reference valid env var names only — never key values
 
 ## Development
 
