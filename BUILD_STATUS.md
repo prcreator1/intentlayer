@@ -686,13 +686,15 @@ No live calls in tests. No default network. Explicit opt-in via feature gate.
 
 ### Usage (manual only)
 ```
-export OPENROUTER_API_KEY="..."
+export OPENROUTER_API_KEY="<your-openrouter-api-key>"
 INTENTLAYER_RUN_LIVE_SMOKE=1 cargo test --features openrouter-http -- --ignored
 ```
 
 ### Safety
 - No live calls in normal CI
 - API key read from env only — never printed/committed
+- Live smoke rejects fallback JSON/provider fallback warnings
+- Proves real provider success, not just local fallback JSON
 - Deterministic prompts bypass OpenRouter even in smoke mode
 - `cfg!(not(feature))` eliminates feature-gate code at compile time
 
