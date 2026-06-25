@@ -25,6 +25,8 @@ Options:
                         Default: research/transformation_rules.json
   --pretty              Output pretty-printed JSON (default).
   --json                Output compact JSON.
+  --compiled-only       Print only compiled_prompt as plain text (no JSON).
+                        Intended for direct handoff to downstream agents.
   --version             Print version and exit.
   --help                Show this help and exit.
 
@@ -36,6 +38,7 @@ struct Args {
     input: Option<PathBuf>,
     rules_path: PathBuf,
     json: bool,
+    compiled_only: bool,
 }
 
 /// Manual CLI parser.  Avoids adding a dependency for v0.1.
@@ -45,6 +48,7 @@ fn parse_args() -> Result<Args, String> {
     let mut input: Option<PathBuf> = None;
     let mut rules_path = PathBuf::from("research/transformation_rules.json");
     let mut json = false;
+    let mut compiled_only = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -62,6 +66,9 @@ fn parse_args() -> Result<Args, String> {
             }
             "--json" => {
                 json = true;
+            }
+            "--compiled-only" => {
+                compiled_only = true;
             }
             "--prompt" => {
                 i += 1;
@@ -111,6 +118,7 @@ fn parse_args() -> Result<Args, String> {
         input,
         rules_path,
         json,
+        compiled_only,
     })
 }
 
@@ -183,6 +191,18 @@ fn main() {
     };
 
     let output = compiler.compile_prompt(&prompt_text);
+
+    // compiled-only: plain text handoff to downstream agents
+    if args.compiled_only {
+        if !output.warnings.is_empty() {
+            for w in &output.warnings {
+                eprintln!("{}", w);
+            }
+            process::exit(1);
+        }
+        println!("{}", output.compiled_prompt);
+        return;
+    }
 
     let json_out = if args.json {
         serde_json::to_string(&output).unwrap()
