@@ -388,3 +388,32 @@ the concatenation order in `specific_phrases()` and `generic_keywords()`.
 - No actual release automation (GitHub Actions release workflow)
 - No cross-compilation setup yet
 - Binary size not yet optimized
+
+---
+
+## Phase 010 — Agent Integration Contract
+
+### What Changed
+- README: new **Agent Integration Contract** section documenting stable JSON
+  output fields, exit codes, agent usage examples, and calling agent checklist
+- `examples/agent_request.json` and `examples/agent_response.json` — machine-readable
+  fixtures showing real CLI input/output
+- Contract smoke test: runs CLI against `examples/agent_request.json` and
+  verifies all 6 required output fields are present
+- 8 integration safety tests verifying exit codes for valid/invalid input,
+  missing files, bad rules path, --version, --help
+
+### Why
+IntentLayer is designed to be called by other coding agents as a
+preprocessor. The contract makes this safe and predictable: agents can
+check exit codes, read `mode` to decide whether to use the compiled or
+original prompt, and check `warnings` for invented provider names.
+
+### Exit Code Contract (verified)
+| Code | Meaning |
+|------|---------|
+| 0 | Successful compilation |
+| 1 | Invalid input, bad rules, malformed JSON, unreadable file |
+
+### Test Results
+**54 tests: 54 passed, 0 failed, 0 ignored**
