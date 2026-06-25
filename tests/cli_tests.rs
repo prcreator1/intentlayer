@@ -459,3 +459,63 @@ fn test_pretty_still_works_with_compiled_only_absent() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains('{'), "--pretty default still outputs JSON");
 }
+
+// ── CLI LLM opt-in tests ──
+
+#[test]
+fn test_default_cli_remains_local() {
+    let output = run(&["--prompt", "fix this repo", "--json"]);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("local_compile"),
+        "Default mode should be local_compile"
+    );
+}
+
+#[test]
+fn test_compiled_only_still_works_locally() {
+    let output = run(&["--prompt", "hello", "--compiled-only"]);
+    assert!(output.status.success());
+}
+
+#[test]
+fn test_llm_without_provider_returns_error() {
+    let output = run(&["--prompt", "test", "--llm"]);
+    assert!(
+        !output.status.success(),
+        "--llm without --provider must fail"
+    );
+}
+
+#[test]
+fn test_llm_openrouter_without_api_key_env_returns_error() {
+    let output = run(&["--prompt", "test", "--llm", "--provider", "openrouter"]);
+    assert!(
+        !output.status.success(),
+        "--llm openrouter without --api-key-env must fail"
+    );
+}
+
+#[test]
+fn test_help_mentions_llm_flags() {
+    let output = run(&["--help"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("--llm"), "--help must mention --llm");
+    assert!(
+        stdout.contains("--provider"),
+        "--help must mention --provider"
+    );
+    assert!(
+        stdout.contains("--api-key-env"),
+        "--help must mention --api-key-env"
+    );
+}
+
+#[test]
+fn test_default_compile_unchanged_with_llm_flags() {
+    let output = run(&["--prompt", "fix this repo", "--json"]);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("compiled_prompt"));
+}
