@@ -148,12 +148,7 @@ mod tests {
         }
     }
 
-    // TODO(v0.1): Enable once classifier uses precise per-record category
-    // routing.  Currently the classifier picks broad categories (e.g. all
-    // "add" prompts → feature_implementation) which differ from the
-    // benchmark's more granular per-record categories.
     #[test]
-    #[ignore]
     fn test_output_category_matches_benchmark() {
         let compiler = build_compiler();
         let records = load_benchmarks();
@@ -519,5 +514,117 @@ mod tests {
             "All pass_through records must return exact original: got {}/{}",
             pt_exact, pt_total
         );
+    }
+
+    // ── Focused classifier tests ──
+
+    #[test]
+    fn test_slash_commands_still_pass_through() {
+        let compiler = build_compiler();
+        for cmd in &["/help", "/clear", "/model", "/init", "/permissions"] {
+            let input = intentlayer::compiler::CompileInput {
+                prompt: cmd.to_string(),
+            };
+            let output = intentlayer::compiler::compile(&input, &compiler);
+            assert_eq!(
+                output.mode, "pass_through",
+                "Slash command '{}' must be pass_through",
+                cmd
+            );
+            assert_eq!(
+                output.compiled_prompt, *cmd,
+                "Slash command must be returned unchanged"
+            );
+        }
+    }
+
+    #[test]
+    fn test_already_good_long_prompts_still_pass_through() {
+        let compiler = build_compiler();
+        let long_prompts = [
+            "Fix the race condition in the UserService.create method by adding a distributed lock using Redis. Keep the change minimal and add a test.",
+            "Create a React hook useLocalStorage that syncs state with localStorage. Handle SSR gracefully. Add TypeScript types and unit tests.",
+            "Update the GraphQL schema to add a 'likes' field to the Post type. Create a new resolver and add a database migration for the likes count column.",
+        ];
+        for prompt in &long_prompts {
+            let input = intentlayer::compiler::CompileInput {
+                prompt: prompt.to_string(),
+            };
+            let output = intentlayer::compiler::compile(&input, &compiler);
+            assert_eq!(
+                output.mode, "pass_through",
+                "Long specific prompt must be pass_through: '{}'",
+                prompt
+            );
+            assert_eq!(
+                output.compiled_prompt, *prompt,
+                "Long specific prompt must be returned unchanged"
+            );
+        }
+    }
+
+    #[test]
+    fn test_minimal_compile_prompts_route_correctly() {
+        let compiler = build_compiler();
+        let cases = [
+            ("continue", "minimal_compile", "continuation_previous_plan"),
+            ("resume", "minimal_compile", "continuation_previous_plan"),
+            ("next step", "minimal_compile", "continuation_previous_plan"),
+            ("try again", "minimal_compile", "ambiguous_tiny_command"),
+            ("proceed", "minimal_compile", "ambiguous_tiny_command"),
+        ];
+        for (prompt, mode, category) in &cases {
+            let input = intentlayer::compiler::CompileInput {
+                prompt: prompt.to_string(),
+            };
+            let output = intentlayer::compiler::compile(&input, &compiler);
+            assert_eq!(output.mode, *mode, "Mode mismatch for '{}'", prompt);
+            assert_eq!(
+                output.category, *category,
+                "Category mismatch for '{}'",
+                prompt
+            );
+        }
+    }
+
+    #[test]
+    fn test_common_local_compile_categories_route_correctly() {
+        let compiler = build_compiler();
+        let cases = [
+            ("fix this", "repair_debug"),
+            ("this error is back", "repair_debug"),
+            ("add payment", "feature_implementation"),
+            ("add auth", "feature_implementation"),
+            ("refactor this mess", "refactor_cleanup"),
+            ("clean up this code", "refactor_cleanup"),
+            ("fix tests", "testing_test_failure"),
+            ("tests are flaky", "testing_test_failure"),
+            ("run tests and fix", "testing_test_failure"),
+            ("api endpoint for users", "backend_api_database"),
+            ("add database model", "backend_api_database"),
+            ("add rate limiting", "security_permissions_auth"),
+            ("add RBAC", "security_permissions_auth"),
+            ("api key authentication", "security_permissions_auth"),
+            ("document this code", "documentation_explanation"),
+            ("explain this error", "documentation_explanation"),
+            ("add JSDoc comments", "documentation_explanation"),
+            ("deployment is broken", "deployment_config_environment"),
+            (
+                "environment variables are not loading",
+                "deployment_config_environment",
+            ),
+            ("fix the Dockerfile", "deployment_config_environment"),
+        ];
+        for (prompt, expected_category) in &cases {
+            let input = intentlayer::compiler::CompileInput {
+                prompt: prompt.to_string(),
+            };
+            let output = intentlayer::compiler::compile(&input, &compiler);
+            assert_eq!(
+                output.category, *expected_category,
+                "Category mismatch for '{}': expected '{}', got '{}'",
+                prompt, expected_category, output.category
+            );
+        }
     }
 }
