@@ -22,7 +22,7 @@ impl Mode {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Mode> {
+    pub fn from_mode_str(s: &str) -> Option<Mode> {
         match s {
             "pass_through" => Some(Mode::PassThrough),
             "minimal_compile" => Some(Mode::MinimalCompile),
@@ -59,19 +59,43 @@ fn keyword_map() -> Vec<(&'static str, &'static str, Mode)> {
         ("traceback", "error_log_fixing", Mode::LocalCompile),
         ("refactor", "refactor_cleanup", Mode::LocalCompile),
         ("clean up", "refactor_cleanup", Mode::LocalCompile),
-        ("production", "production_readiness_hardening", Mode::LocalCompile),
-        ("harden", "production_readiness_hardening", Mode::LocalCompile),
-        ("robust", "production_readiness_hardening", Mode::LocalCompile),
+        (
+            "production",
+            "production_readiness_hardening",
+            Mode::LocalCompile,
+        ),
+        (
+            "harden",
+            "production_readiness_hardening",
+            Mode::LocalCompile,
+        ),
+        (
+            "robust",
+            "production_readiness_hardening",
+            Mode::LocalCompile,
+        ),
         ("commit", "commit_push_review", Mode::LocalCompile),
         ("push", "commit_push_review", Mode::LocalCompile),
         ("review", "commit_push_review", Mode::LocalCompile),
         ("optimize", "performance_optimization", Mode::LocalCompile),
         ("faster", "performance_optimization", Mode::LocalCompile),
-        ("performance", "performance_optimization", Mode::LocalCompile),
+        (
+            "performance",
+            "performance_optimization",
+            Mode::LocalCompile,
+        ),
         ("secure", "security_permissions_auth", Mode::LocalCompile),
         ("rbac", "security_permissions_auth", Mode::LocalCompile),
-        ("permission", "security_permissions_auth", Mode::LocalCompile),
-        ("rate limit", "security_permissions_auth", Mode::LocalCompile),
+        (
+            "permission",
+            "security_permissions_auth",
+            Mode::LocalCompile,
+        ),
+        (
+            "rate limit",
+            "security_permissions_auth",
+            Mode::LocalCompile,
+        ),
         ("document", "documentation_explanation", Mode::LocalCompile),
         ("explain", "documentation_explanation", Mode::LocalCompile),
         ("jsdoc", "documentation_explanation", Mode::LocalCompile),
@@ -130,8 +154,8 @@ pub fn classify(prompt: &str, rules: &RuleSet) -> Classification {
     // 2. Very short conversational prompts (exact match only)
     if word_count <= 3 {
         let conversational = [
-            "yes", "no", "ok", "okay", "do it", "run it", "go ahead", "nope",
-            "thanks", "hello", "sure", "done", "yep", "yeah", "no way",
+            "yes", "no", "ok", "okay", "do it", "run it", "go ahead", "nope", "thanks", "hello",
+            "sure", "done", "yep", "yeah", "no way",
         ];
         if conversational.contains(&lower.as_str()) {
             return Classification {
@@ -162,7 +186,7 @@ pub fn classify(prompt: &str, rules: &RuleSet) -> Classification {
 
     // 5. Rule pattern match
     if let Some(rule) = rules.match_prompt(trimmed) {
-        let mode = Mode::from_str(&rule.mode_recommendation).unwrap_or(Mode::LocalCompile);
+        let mode = Mode::from_mode_str(&rule.mode_recommendation).unwrap_or(Mode::LocalCompile);
         return Classification {
             category: rule.category.clone(),
             mode,
