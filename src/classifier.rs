@@ -50,15 +50,193 @@ pub struct Classification {
 // TODO(v0.1): Hardcoded seed heuristic. Replace with learned model or
 // data-driven frequency table in a future version.
 /// Map of action keywords → (category, mode).
+/// Ordered from most specific (compound phrases) to generic (single words).
 fn keyword_map() -> Vec<(&'static str, &'static str, Mode)> {
     vec![
+        // Compound keywords first — most specific
+        ("something is wrong", "repair_debug", Mode::LocalCompile),
+        ("this error is back", "repair_debug", Mode::LocalCompile),
+        (
+            "this error keeps happening",
+            "repair_debug",
+            Mode::LocalCompile,
+        ),
+        ("same issue", "repair_debug", Mode::LocalCompile),
+        ("was working before", "repair_debug", Mode::LocalCompile),
+        ("i think i have broken", "repair_debug", Mode::LocalCompile),
+        ("this button", "ui_ux_fix", Mode::LocalCompile),
+        ("make it look better", "ui_ux_fix", Mode::LocalCompile),
+        ("fix the ui", "ui_ux_fix", Mode::LocalCompile),
+        ("update ui", "ui_ux_fix", Mode::LocalCompile),
+        ("api endpoint", "backend_api_database", Mode::LocalCompile),
+        ("database model", "backend_api_database", Mode::LocalCompile),
+        (
+            "connect backend",
+            "feature_implementation",
+            Mode::LocalCompile,
+        ),
+        ("add auth", "feature_implementation", Mode::LocalCompile),
+        ("add payment", "feature_implementation", Mode::LocalCompile),
+        (
+            "add logging",
+            "production_readiness_hardening",
+            Mode::LocalCompile,
+        ),
+        (
+            "add error handling",
+            "production_readiness_hardening",
+            Mode::LocalCompile,
+        ),
+        (
+            "add health check",
+            "deployment_config_environment",
+            Mode::LocalCompile,
+        ),
+        (
+            "add dark mode",
+            "feature_implementation",
+            Mode::LocalCompile,
+        ),
+        (
+            "environment variable",
+            "deployment_config_environment",
+            Mode::LocalCompile,
+        ),
+        (
+            "dockerfile",
+            "deployment_config_environment",
+            Mode::LocalCompile,
+        ),
+        (
+            "set up ci",
+            "deployment_config_environment",
+            Mode::LocalCompile,
+        ),
+        (
+            "deployment is broken",
+            "deployment_config_environment",
+            Mode::LocalCompile,
+        ),
+        (
+            "don't break what works",
+            "commit_push_review",
+            Mode::LocalCompile,
+        ),
+        (
+            "check if safe to commit",
+            "commit_push_review",
+            Mode::LocalCompile,
+        ),
+        ("commit if safe", "commit_push_review", Mode::LocalCompile),
+        (
+            "review my changes",
+            "commit_push_review",
+            Mode::LocalCompile,
+        ),
+        (
+            "reduce bundle",
+            "performance_optimization",
+            Mode::LocalCompile,
+        ),
+        (
+            "reduce docker",
+            "performance_optimization",
+            Mode::LocalCompile,
+        ),
+        (
+            "optimize this",
+            "performance_optimization",
+            Mode::LocalCompile,
+        ),
+        (
+            "make it faster",
+            "performance_optimization",
+            Mode::LocalCompile,
+        ),
+        ("api key", "security_permissions_auth", Mode::LocalCompile),
+        (
+            "rate limit",
+            "security_permissions_auth",
+            Mode::LocalCompile,
+        ),
+        ("add rate", "security_permissions_auth", Mode::LocalCompile),
+        ("extract this", "refactor_cleanup", Mode::LocalCompile),
+        ("refactor this", "refactor_cleanup", Mode::LocalCompile),
+        ("clean up this", "refactor_cleanup", Mode::LocalCompile),
+        (
+            "run tests and fix",
+            "testing_test_failure",
+            Mode::LocalCompile,
+        ),
+        (
+            "tests are flaky",
+            "testing_test_failure",
+            Mode::LocalCompile,
+        ),
+        ("fix tests", "testing_test_failure", Mode::LocalCompile),
+        ("add tests", "testing_test_failure", Mode::LocalCompile),
+        (
+            "make tests pass",
+            "testing_test_failure",
+            Mode::LocalCompile,
+        ),
+        ("api docs", "documentation_explanation", Mode::LocalCompile),
+        (
+            "write readme",
+            "documentation_explanation",
+            Mode::LocalCompile,
+        ),
+        ("jsdoc", "documentation_explanation", Mode::LocalCompile),
+        ("add jsdoc", "documentation_explanation", Mode::LocalCompile),
+        (
+            "explain this",
+            "documentation_explanation",
+            Mode::LocalCompile,
+        ),
+        (
+            "document this",
+            "documentation_explanation",
+            Mode::LocalCompile,
+        ),
+        (
+            "add comments",
+            "documentation_explanation",
+            Mode::LocalCompile,
+        ),
+        // Architecture / planning
+        (
+            "how should i structure",
+            "architecture_planning",
+            Mode::LlmCompile,
+        ),
+        (
+            "design the system",
+            "architecture_planning",
+            Mode::LlmCompile,
+        ),
+        (
+            "design architecture",
+            "architecture_planning",
+            Mode::LlmCompile,
+        ),
+        (
+            "migrate to new server",
+            "deployment_config_environment",
+            Mode::LlmCompile,
+        ),
+        // Keywords that DISQUALIFY "explain" → error_log
+        (
+            "explain this error",
+            "documentation_explanation",
+            Mode::LocalCompile,
+        ),
+        // Generic single-word keywords — lower priority
         ("fix", "repair_debug", Mode::LocalCompile),
         ("broken", "repair_debug", Mode::LocalCompile),
         ("bug", "repair_debug", Mode::LocalCompile),
         ("error", "error_log_fixing", Mode::LocalCompile),
         ("traceback", "error_log_fixing", Mode::LocalCompile),
         ("refactor", "refactor_cleanup", Mode::LocalCompile),
-        ("clean up", "refactor_cleanup", Mode::LocalCompile),
         (
             "production",
             "production_readiness_hardening",
@@ -76,7 +254,6 @@ fn keyword_map() -> Vec<(&'static str, &'static str, Mode)> {
         ),
         ("commit", "commit_push_review", Mode::LocalCompile),
         ("push", "commit_push_review", Mode::LocalCompile),
-        ("review", "commit_push_review", Mode::LocalCompile),
         ("optimize", "performance_optimization", Mode::LocalCompile),
         ("faster", "performance_optimization", Mode::LocalCompile),
         (
@@ -91,38 +268,67 @@ fn keyword_map() -> Vec<(&'static str, &'static str, Mode)> {
             "security_permissions_auth",
             Mode::LocalCompile,
         ),
-        (
-            "rate limit",
-            "security_permissions_auth",
-            Mode::LocalCompile,
-        ),
         ("document", "documentation_explanation", Mode::LocalCompile),
         ("explain", "documentation_explanation", Mode::LocalCompile),
-        ("jsdoc", "documentation_explanation", Mode::LocalCompile),
         ("readme", "documentation_explanation", Mode::LocalCompile),
         ("design", "architecture_planning", Mode::LlmCompile),
         ("structure", "architecture_planning", Mode::LlmCompile),
         ("microservice", "architecture_planning", Mode::LlmCompile),
         ("migrate", "deployment_config_environment", Mode::LlmCompile),
+        ("pagination", "backend_api_database", Mode::LocalCompile),
+        ("add search", "feature_implementation", Mode::LocalCompile),
+        (
+            "add file upload",
+            "feature_implementation",
+            Mode::LocalCompile,
+        ),
+        ("add email", "feature_implementation", Mode::LocalCompile),
+        (
+            "add notifications",
+            "feature_implementation",
+            Mode::LocalCompile,
+        ),
+        ("add users", "feature_implementation", Mode::LocalCompile),
+        ("add csv", "feature_implementation", Mode::LocalCompile),
+        ("add i18n", "feature_implementation", Mode::LocalCompile),
+        ("add social", "feature_implementation", Mode::LocalCompile),
+        ("add image", "feature_implementation", Mode::LocalCompile),
+        (
+            "implement the",
+            "feature_implementation",
+            Mode::LocalCompile,
+        ),
+        ("button is misaligned", "ui_ux_fix", Mode::LocalCompile),
+        ("phase", "continuation_previous_plan", Mode::LocalCompile),
     ]
 }
 
 // TODO(v0.1): Hardcoded seed list. Replace with data-driven detection from
 // the benchmark corpus or a classifier model in a future version.
-/// Known minimal_compile prompts — short commands that need 1-15 token expansion.
-/// These are checked FIRST (after slash commands and conversational pass-through)
-/// so they don't get caught by broader rule patterns.
-const MINIMAL_COMPILE_PROMPTS: &[&str] = &[
-    "continue",
-    "resume",
-    "next step",
-    "proceed",
-    "do what we discussed",
-    "same plan continue",
-    "i think i have broken you",
-    "same issue as before",
-    "try again",
-];
+
+/// Known minimal_compile prompts — short commands that need 1-15 token
+/// expansion, with per-prompt categories.
+///
+/// Checked BEFORE rule matching so they don't get caught by broader patterns.
+fn classify_minimal(lower: &str) -> Option<Classification> {
+    let (category, rule_id) = match lower {
+        "continue" => ("continuation_previous_plan", "CONTINUE-MIN-001"),
+        "resume" => ("continuation_previous_plan", "CONTINUE-MIN-001"),
+        "next step" => ("continuation_previous_plan", "CONTINUE-MIN-001"),
+        "do what we discussed" => ("continuation_previous_plan", "CONTINUE-MIN-001"),
+        "same plan continue" => ("continuation_previous_plan", "CONTINUE-MIN-001"),
+        "proceed" => ("ambiguous_tiny_command", "TINY-MIN-001"),
+        "try again" => ("ambiguous_tiny_command", "TINY-MIN-001"),
+        "i think i have broken you" => ("repair_debug", "REPAIR-MIN-001"),
+        "same issue as before" => ("repair_debug", "REPAIR-MIN-001"),
+        _ => return None,
+    };
+    Some(Classification {
+        category: category.into(),
+        mode: Mode::MinimalCompile,
+        rule_id: Some(rule_id.into()),
+    })
+}
 
 /// Classify a prompt using the loaded rule set.
 ///
@@ -131,11 +337,8 @@ const MINIMAL_COMPILE_PROMPTS: &[&str] = &[
 /// 2. Very short conversational prompts (≤3 words, known list) → pass_through
 /// 3. Known minimal_compile prompts → minimal_compile
 /// 4. Long specific prompts (≥15 words, ≥2 tech indicators) → pass_through
-///    (These are already-good prompts that happen to contain action words.
-///    Must be checked BEFORE rule matching so detailed prompts don't get
-///    caught by broad patterns like "fix" or "add".)
-/// 5. Rule pattern match → use rule's category and mode
-/// 6. Keyword-based matching → local_compile or llm_compile
+/// 5. Keyword-based matching → specific categories (avoids generic rule patterns)
+/// 6. Rule pattern match → rule-specific categories (fallback for explicit patterns)
 /// 7. Fallback → local_compile (general rewrite)
 pub fn classify(prompt: &str, rules: &RuleSet) -> Classification {
     let trimmed = prompt.trim();
@@ -167,12 +370,8 @@ pub fn classify(prompt: &str, rules: &RuleSet) -> Classification {
     }
 
     // 3. Known minimal_compile prompts (exact match, case-insensitive)
-    if MINIMAL_COMPILE_PROMPTS.contains(&lower.as_str()) {
-        return Classification {
-            category: "continuation_previous_plan".into(),
-            mode: Mode::MinimalCompile,
-            rule_id: Some("CONTINUE-MIN-001".into()),
-        };
+    if let Some(classification) = classify_minimal(&lower) {
+        return classification;
     }
 
     // 4. Long specific prompts → pass_through (already good)
@@ -184,17 +383,8 @@ pub fn classify(prompt: &str, rules: &RuleSet) -> Classification {
         };
     }
 
-    // 5. Rule pattern match
-    if let Some(rule) = rules.match_prompt(trimmed) {
-        let mode = Mode::from_mode_str(&rule.mode_recommendation).unwrap_or(Mode::LocalCompile);
-        return Classification {
-            category: rule.category.clone(),
-            mode,
-            rule_id: Some(rule.rule_id.clone()),
-        };
-    }
-
-    // 6. Keyword-based matching
+    // 5. Keyword-based matching (checked before rules to avoid generic
+    //    stripped patterns like "add" or "build" catching everything)
     for (keyword, category, mode) in keyword_map() {
         if lower.contains(keyword) {
             return Classification {
@@ -203,6 +393,16 @@ pub fn classify(prompt: &str, rules: &RuleSet) -> Classification {
                 rule_id: None,
             };
         }
+    }
+
+    // 6. Rule pattern match (explicit rule patterns as fallback)
+    if let Some(rule) = rules.match_prompt(trimmed) {
+        let mode = Mode::from_mode_str(&rule.mode_recommendation).unwrap_or(Mode::LocalCompile);
+        return Classification {
+            category: rule.category.clone(),
+            mode,
+            rule_id: Some(rule.rule_id.clone()),
+        };
     }
 
     // 7. Fallback
