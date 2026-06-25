@@ -133,6 +133,9 @@ tests/
 └── benchmark_tests.rs  # 9 benchmark tests
 ```
 
+
+**Post-review patch:** api_key_env is now validated as an env-var name before lookup. Invalid names (containing hyphens, spaces, =, /, etc.) are rejected. Errors redact the invalid value. 6 new validation tests added.
+
 ### Test Results
 
 ```
@@ -505,4 +508,4 @@ a safe fallback.
 **No.** No external API calls added. No network dependency. No OAuth.
 
 ### Test Results
-**72 tests: 72 passed, 0 failed, 0 ignored**
+**78 tests: 78 passed, 0 failed, 0 ignored**
