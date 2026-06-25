@@ -388,3 +388,74 @@ fn test_contract_smoke_output_fields() {
         );
     }
 }
+
+// ── Compiled-only mode tests ──
+
+#[test]
+fn test_compiled_only_prints_only_compiled_prompt() {
+    let output = run(&["--prompt", "fix this bug", "--compiled-only"]);
+    assert!(output.status.success(), "compiled-only should exit 0");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains('{'),
+        "compiled-only should not output JSON"
+    );
+    assert!(
+        !stdout.contains("original_prompt"),
+        "compiled-only should not contain metadata"
+    );
+    assert!(
+        stdout.contains("context"),
+        "compiled-only should contain compiled prompt"
+    );
+}
+
+#[test]
+fn test_compiled_only_output_is_not_json() {
+    let output = run(&["--prompt", "hello", "--compiled-only"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.trim().starts_with('{'),
+        "compiled-only output must not start with {{"
+    );
+}
+
+#[test]
+fn test_compiled_only_with_stdin() {
+    let output = run_with_stdin(&["--compiled-only"], r#"{"prompt":"fix this bug"}"#);
+    assert!(
+        output.status.success(),
+        "compiled-only with stdin should exit 0"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains('{'),
+        "compiled-only stdin should not output JSON"
+    );
+}
+
+#[test]
+fn test_help_mentions_compiled_only() {
+    let output = run(&["--help"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("--compiled-only"),
+        "--help should mention --compiled-only"
+    );
+}
+
+#[test]
+fn test_json_still_works_with_compiled_only_absent() {
+    let output = run(&["--prompt", "hello", "--json"]);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains('{'), "default CLI still outputs JSON");
+}
+
+#[test]
+fn test_pretty_still_works_with_compiled_only_absent() {
+    let output = run(&["--prompt", "hello"]);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains('{'), "--pretty default still outputs JSON");
+}
