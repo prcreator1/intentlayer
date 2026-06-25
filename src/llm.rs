@@ -61,9 +61,270 @@ impl LlmProvider for NoopLlmCompiler {
     }
 }
 
+// ── Safety envelope ──────────────────────────────────────────────────
+
+/// Options for building an LLM prompt envelope.
+#[derive(Debug, Clone, Default)]
+pub struct LlmEnvelopeOptions {
+    /// Enable unsafe local secret passthrough.
+    /// When true, the marker
+    /// [[INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]...[[/INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]
+    /// bypasses redaction and returns a local-only result.
+    /// Raw secrets are never placed in an upstream LLM envelope.
+    #[allow(dead_code)]
+    pub allow_local_secret_passthrough: bool,
+}
+
+/// Result of building an LLM envelope.
+#[derive(Clone)]
+pub enum LlmEnvelopeBuildResult {
+    /// Normal envelope for upstream LLM.
+    Envelope(LlmPromptEnvelope),
+    /// Local-only secret passthrough — upstream LLM envelope bypassed.
+    LocalSecretPassthrough {
+        prompt: String,
+        warnings: Vec<String>,
+    },
+}
+
+impl std::fmt::Debug for LlmEnvelopeBuildResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LlmEnvelopeBuildResult::Envelope(env) => f.debug_tuple("Envelope").field(env).finish(),
+            LlmEnvelopeBuildResult::LocalSecretPassthrough { warnings, .. } => f
+                .debug_struct("LocalSecretPassthrough")
+                .field("prompt", &"[REDACTED_LOCAL_SECRET_PASSTHROUGH]")
+                .field("warnings", warnings)
+                .finish(),
+        }
+    }
+}
+
+/// The safe instruction envelope sent to a future LLM provider.
+///
+/// Contains only the latest user-authored prompt plus constraints.
+/// Secrets are redacted before serialization.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LlmPromptEnvelope {
+    /// The original user-authored prompt (redacted if secrets detected).
+    pub original_prompt: String,
+    /// Classified category (e.g. "architecture_planning").
+    pub category: String,
+    /// Mode ("llm_compile").
+    pub mode: String,
+    /// Explicit instruction to the LLM provider.
+    pub instruction: String,
+    /// Elements the LLM must preserve from the original prompt.
+    pub must_preserve: Vec<String>,
+    /// Elements the LLM must never invent in the output.
+    pub must_not_invent: Vec<String>,
+    /// Warnings (e.g. secret redaction notices).
+    pub warnings: Vec<String>,
+}
+
+/// Expected response contract for LLM-assisted compilation.
+///
+/// The provider must return only a rewritten prompt plus warnings.
+/// It must not execute tasks, modify files, run shell commands,
+/// or invent stack choices / services / tools / providers / scope.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct LlmResponseContract {
+    pub compiled_prompt: String,
+    pub warnings: Vec<String>,
+}
+
+// ── Secret redaction ─────────────────────────────────────────────────
+
+/// Redact secret-like values from a prompt string.
+///
+/// Returns the redacted string and a list of warnings for each redaction.
+pub fn redact_secret_like_values(input: &str) -> (String, Vec<String>) {
+    let mut warnings = Vec::new();
+    let mut result = input.to_string();
+
+    // Redact API-key assignment patterns: VAR_NAME=value
+    let patterns: &[(&str, &str)] = &[
+        ("api_key=", "[REDACTED_SECRET]"),
+        ("apikey=", "[REDACTED_SECRET]"),
+        ("_secret=", "[REDACTED_SECRET]"),
+        ("_token=", "[REDACTED_SECRET]"),
+    ];
+    for (prefix, replacement) in patterns {
+        let lower = result.to_lowercase();
+        if let Some(pos) = lower.find(prefix) {
+            let start = pos + prefix.len();
+            if let Some(end) = result[start..].find(|c: char| c.is_whitespace() || c == '"') {
+                result.replace_range(start..start + end, replacement);
+            } else {
+                result.replace_range(start.., replacement);
+            }
+            warnings.push(
+                "Secret-like value redacted from prompt before LLM envelope serialization".into(),
+            );
+        }
+    }
+
+    // Redact Bearer token patterns
+    let bearer_prefix = "bearer ";
+    if let Some(pos) = result.to_lowercase().find(bearer_prefix) {
+        let start = pos + bearer_prefix.len();
+        let end = result[start..]
+            .find(|c: char| c.is_whitespace() || c == '"')
+            .map(|i| start + i)
+            .unwrap_or(result.len());
+        result.replace_range(start..end, "[REDACTED_SECRET]");
+        warnings.push(
+            "Secret-like value redacted from prompt before LLM envelope serialization".into(),
+        );
+    }
+
+    // Redact sk- prefixed tokens
+    let sk_prefix = "sk-";
+    if let Some(pos) = result.to_lowercase().find(sk_prefix) {
+        let start = pos;
+        let end = result[start..]
+            .find(|c: char| c.is_whitespace() || c == '"')
+            .map(|i| start + i)
+            .unwrap_or(result.len());
+        result.replace_range(start..end, "[REDACTED_SECRET]");
+        warnings.push(
+            "Secret-like value redacted from prompt before LLM envelope serialization".into(),
+        );
+    }
+
+    (result, warnings)
+}
+
+/// Local secret passthrough marker.
+const PASSTHROUGH_OPEN: &str = "[[INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]";
+const PASSTHROUGH_CLOSE: &str = "[[/INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]";
+
+/// Check if the prompt contains the local secret passthrough marker.
+fn has_passthrough_marker(input: &str) -> bool {
+    input.contains(PASSTHROUGH_OPEN) && input.contains(PASSTHROUGH_CLOSE)
+}
+
+/// Strip the passthrough marker tags from the prompt.
+fn strip_passthrough_marker(input: &str) -> String {
+    input
+        .replace(PASSTHROUGH_OPEN, "")
+        .replace(PASSTHROUGH_CLOSE, "")
+        .trim()
+        .to_string()
+}
+
+// ── Envelope builder ─────────────────────────────────────────────────
+
+/// Build a safe [`LlmPromptEnvelope`] or [`LlmEnvelopeBuildResult`]
+/// for a given raw prompt and category.
+pub fn build_llm_prompt_envelope(
+    original_prompt: &str,
+    category: &str,
+    options: &LlmEnvelopeOptions,
+) -> LlmEnvelopeBuildResult {
+    // Check for local secret passthrough marker
+    if has_passthrough_marker(original_prompt) {
+        if options.allow_local_secret_passthrough {
+            return LlmEnvelopeBuildResult::LocalSecretPassthrough {
+                prompt: strip_passthrough_marker(original_prompt),
+                warnings: vec![
+                    "Local secret passthrough used; upstream LLM envelope bypassed".into(),
+                ],
+            };
+        }
+        // Marker present but opt-in disabled: redact
+        let stripped = strip_passthrough_marker(original_prompt);
+        let (redacted, mut warnings) = redact_secret_like_values(&stripped);
+        warnings.push(
+            "Local secret passthrough marker ignored because unsafe opt-in is disabled".into(),
+        );
+        let instruction = build_instruction(&redacted, category);
+        return LlmEnvelopeBuildResult::Envelope(LlmPromptEnvelope {
+            original_prompt: redacted,
+            category: category.to_string(),
+            mode: "llm_compile".to_string(),
+            instruction,
+            must_preserve: preservation_list(),
+            must_not_invent: no_invention_list(),
+            warnings,
+        });
+    }
+
+    // Normal path: redact secrets before building envelope
+    let (redacted, warnings) = redact_secret_like_values(original_prompt);
+    let instruction = build_instruction(&redacted, category);
+
+    LlmEnvelopeBuildResult::Envelope(LlmPromptEnvelope {
+        original_prompt: redacted,
+        category: category.to_string(),
+        mode: "llm_compile".to_string(),
+        instruction,
+        must_preserve: preservation_list(),
+        must_not_invent: no_invention_list(),
+        warnings,
+    })
+}
+
+fn build_instruction(prompt: &str, category: &str) -> String {
+    format!(
+        "You are a prompt compiler.  Rewrite the following user-authored \
+         prompt into a compact, context-preserving, execution-grade prompt \
+         for a coding agent.\n\n\
+         Rules:\n\
+         - Preserve all context references (repo, error, file, plan, branch, etc.)\n\
+         - Never invent frameworks, providers, file paths, databases, \
+           architecture, deployment targets, or payment/auth providers\n\
+         - Do not add features beyond what the user requested\n\
+         - Do not ask clarification questions about context the agent may already have\n\
+         - Do not execute tasks, modify files, or run commands\n\
+         \n\
+         Return only valid JSON matching this exact shape:\n\
+         {{\"compiled_prompt\":\"...\",\"warnings\":[]}}\n\
+         \n\
+         Do not return markdown.\n\
+         Do not return prose outside JSON.\n\
+         \n\
+         Original prompt ({category}):\n{prompt}"
+    )
+}
+
+fn preservation_list() -> Vec<String> {
+    vec![
+        "original context references".into(),
+        "stated user intent".into(),
+        "existing project constraints".into(),
+    ]
+}
+
+fn no_invention_list() -> Vec<String> {
+    vec![
+        "frameworks".into(),
+        "providers".into(),
+        "file paths".into(),
+        "databases".into(),
+        "architecture".into(),
+        "deployment targets".into(),
+        "auth/payment providers".into(),
+        "scope beyond request".into(),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn default_opts() -> LlmEnvelopeOptions {
+        LlmEnvelopeOptions::default()
+    }
+
+    fn envelope(prompt: &str, cat: &str) -> LlmPromptEnvelope {
+        match build_llm_prompt_envelope(prompt, cat, &default_opts()) {
+            LlmEnvelopeBuildResult::Envelope(e) => e,
+            LlmEnvelopeBuildResult::LocalSecretPassthrough { .. } => {
+                panic!("Unexpected local passthrough")
+            }
+        }
+    }
 
     #[test]
     fn test_types_compile() {
@@ -85,7 +346,7 @@ mod tests {
         let result = provider.compile(&req);
         assert!(result.is_err(), "Noop must return error");
         match result {
-            Err(LlmError::NoProvider) => {} // expected
+            Err(LlmError::NoProvider) => {}
             _ => panic!("Expected NoProvider error"),
         }
     }
@@ -99,7 +360,6 @@ mod tests {
         };
         let r1 = provider.compile(&req);
         let r2 = provider.compile(&req);
-        // Both must return identical errors
         assert_eq!(
             format!("{:?}", r1),
             format!("{:?}", r2),
@@ -109,14 +369,264 @@ mod tests {
 
     #[test]
     fn test_noop_no_network() {
-        // No network-related imports or configuration exist.
-        // This test proves the type system doesn't expose any network surface.
         let provider = NoopLlmCompiler;
         let req = LlmCompileRequest {
             original_prompt: "test".into(),
             category: "architecture_planning".into(),
         };
-        // Calls complete instantly — no I/O
         let _ = provider.compile(&req);
+    }
+
+    // ── Issue 1 — JSON response instruction ─────────────────────
+
+    #[test]
+    fn test_instruction_requires_json() {
+        let env = envelope("design", "architecture_planning");
+        let inst = env.instruction.to_lowercase();
+        assert!(inst.contains("json"), "Instruction must require JSON");
+        assert!(
+            inst.contains("compiled_prompt"),
+            "Must mention compiled_prompt"
+        );
+        assert!(inst.contains("warnings"), "Must mention warnings");
+    }
+
+    #[test]
+    fn test_instruction_forbids_markdown() {
+        let env = envelope("test", "repair_debug");
+        let inst = env.instruction.to_lowercase();
+        assert!(
+            inst.contains("do not return markdown"),
+            "Must forbid markdown"
+        );
+        assert!(
+            inst.contains("do not return prose"),
+            "Must forbid prose outside JSON"
+        );
+    }
+
+    #[test]
+    fn test_response_contract_still_deserializes() {
+        let json = r#"{"compiled_prompt":"safe prompt","warnings":[]}"#;
+        let resp: LlmResponseContract = serde_json::from_str(json).expect("Should deserialize");
+        assert_eq!(resp.compiled_prompt, "safe prompt");
+        assert!(resp.warnings.is_empty());
+    }
+
+    // ── Issue 2 — Secret redaction ──────────────────────────────
+
+    #[test]
+    fn test_sk_token_redacted_from_envelope_original_prompt() {
+        let env = envelope("use sk-abc123xyz for auth", "security_permissions_auth");
+        assert!(!env.original_prompt.contains("abc123xyz"));
+        assert!(env.original_prompt.contains("[REDACTED_SECRET]"));
+    }
+
+    #[test]
+    fn test_sk_token_redacted_from_instruction() {
+        let env = envelope("use sk-abc123xyz for auth", "security_permissions_auth");
+        assert!(!env.instruction.contains("abc123xyz"));
+        assert!(env.instruction.contains("[REDACTED_SECRET]"));
+    }
+
+    #[test]
+    fn test_bearer_token_redacted() {
+        let env = envelope(
+            "auth with Bearer my-token-here plz",
+            "security_permissions_auth",
+        );
+        assert!(!env.original_prompt.contains("my-token-here"));
+        assert!(env.original_prompt.contains("[REDACTED_SECRET]"));
+    }
+
+    #[test]
+    fn test_env_style_api_key_redacted() {
+        let env = envelope(
+            "set OPENAI_API_KEY=sk-test-key in .env",
+            "deployment_config_environment",
+        );
+        assert!(!env.original_prompt.contains("sk-test-key"));
+        assert!(env.original_prompt.contains("[REDACTED_SECRET]"));
+    }
+
+    #[test]
+    fn test_redaction_adds_warning() {
+        let env = envelope("use sk-123 for api", "feature_implementation");
+        assert!(
+            env.warnings
+                .iter()
+                .any(|w| w.contains("Secret-like value redacted")),
+            "Must have redaction warning"
+        );
+    }
+
+    #[test]
+    fn test_normal_non_secret_prompt_unchanged() {
+        let env = envelope("fix this repo", "repair_debug");
+        assert_eq!(env.original_prompt, "fix this repo");
+        assert!(env.warnings.is_empty());
+    }
+
+    #[test]
+    fn test_normal_quotes_do_not_bypass_redaction() {
+        let env = envelope(
+            r#"set "OPENAI_API_KEY=sk-abc" in config"#,
+            "deployment_config_environment",
+        );
+        assert!(!env.original_prompt.contains("sk-abc"));
+        assert!(env.original_prompt.contains("[REDACTED_SECRET]"));
+    }
+
+    // ── Issue 3 — Local secret passthrough ──────────────────────
+
+    #[test]
+    fn test_marker_alone_does_not_bypass_when_optin_disabled() {
+        let prompt = "[[INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]\nAdd MY_TOKEN=abc123 to .env\n[[/INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]";
+        let result =
+            build_llm_prompt_envelope(prompt, "deployment_config_environment", &default_opts());
+        match result {
+            LlmEnvelopeBuildResult::Envelope(env) => {
+                assert!(!env.original_prompt.contains("abc123"));
+                assert!(env.warnings.iter().any(|w| w.contains("marker ignored")));
+            }
+            _ => panic!("Expected Envelope when opt-in disabled"),
+        }
+    }
+
+    #[test]
+    fn test_marker_plus_optin_returns_local_passthrough() {
+        let prompt = "[[INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]\nAdd MY_TOKEN=abc123 to .env\n[[/INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]";
+        let opts = LlmEnvelopeOptions {
+            allow_local_secret_passthrough: true,
+        };
+        let result = build_llm_prompt_envelope(prompt, "deployment_config_environment", &opts);
+        match result {
+            LlmEnvelopeBuildResult::LocalSecretPassthrough {
+                prompt: p,
+                warnings: w,
+            } => {
+                assert!(p.contains("MY_TOKEN=abc123"), "Must contain raw token");
+                assert!(!p.contains("INTENTLAYER"), "Marker must be stripped");
+                assert!(
+                    w.iter().any(|x| x.contains("bypassed")),
+                    "Must have bypass warning"
+                );
+            }
+            _ => panic!("Expected LocalSecretPassthrough with opt-in enabled"),
+        }
+    }
+
+    #[test]
+    fn test_local_passthrough_never_builds_llm_envelope_with_raw_secret() {
+        let prompt = "[[INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]\nuse sk-secret-key\n[[/INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]";
+        let opts = LlmEnvelopeOptions {
+            allow_local_secret_passthrough: true,
+        };
+        let result = build_llm_prompt_envelope(prompt, "repair_debug", &opts);
+        // Must NOT return an Envelope containing the raw secret
+        match result {
+            LlmEnvelopeBuildResult::LocalSecretPassthrough { .. } => {} // expected
+            LlmEnvelopeBuildResult::Envelope(env) => {
+                panic!(
+                    "Must not build envelope with raw secret; got: {}",
+                    env.original_prompt
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_local_passthrough_warning_present() {
+        let prompt = "[[INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]\ntest\n[[/INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]";
+        let opts = LlmEnvelopeOptions {
+            allow_local_secret_passthrough: true,
+        };
+        let result = build_llm_prompt_envelope(prompt, "repair_debug", &opts);
+        match result {
+            LlmEnvelopeBuildResult::LocalSecretPassthrough { warnings, .. } => {
+                assert!(
+                    warnings.iter().any(|w| w.contains("bypassed")),
+                    "Missing bypass warning"
+                );
+            }
+            _ => panic!("Expected local passthrough"),
+        }
+    }
+
+    // ── Original envelope tests (updated) ──────────────────────
+
+    #[test]
+    fn test_envelope_includes_original_prompt() {
+        let env = envelope("design the system", "architecture_planning");
+        assert_eq!(env.original_prompt, "design the system");
+    }
+
+    #[test]
+    fn test_envelope_includes_category() {
+        let env = envelope("test", "testing_test_failure");
+        assert_eq!(env.category, "testing_test_failure");
+    }
+
+    #[test]
+    fn test_envelope_includes_no_invention_rules() {
+        let env = envelope("add payment", "feature_implementation");
+        assert!(env.must_not_invent.iter().any(|r| r.contains("provider")));
+        assert!(env.must_not_invent.iter().any(|r| r.contains("framework")));
+        assert!(env.must_not_invent.iter().any(|r| r.contains("scope")));
+    }
+
+    #[test]
+    fn test_envelope_includes_rewrite_only_instruction() {
+        let env = envelope("test", "repair_debug");
+        assert!(env.instruction.to_lowercase().contains("rewrite"));
+        assert!(env.instruction.to_lowercase().contains("never invent"));
+        assert!(env.instruction.to_lowercase().contains("do not execute"));
+    }
+
+    // ── Debug redaction tests ──────────────────────────────────
+
+    #[test]
+    fn test_local_passthrough_debug_does_not_expose_prompt() {
+        let result = LlmEnvelopeBuildResult::LocalSecretPassthrough {
+            prompt: "MY_TOKEN=fake_value".into(),
+            warnings: vec!["bypass".into()],
+        };
+        let debug = format!("{:?}", result);
+        assert!(
+            !debug.contains("fake_value"),
+            "Debug must not expose raw prompt: {}",
+            debug
+        );
+        assert!(
+            debug.contains("[REDACTED_LOCAL_SECRET_PASSTHROUGH]"),
+            "Must show redacted marker"
+        );
+    }
+
+    #[test]
+    fn test_envelope_debug_still_works_no_secrets() {
+        let env = envelope("fix this repo", "repair_debug");
+        let debug = format!("{:?}", env);
+        assert!(
+            debug.contains("fix this repo"),
+            "Normal envelope debug should still work"
+        );
+    }
+
+    #[test]
+    fn test_passthrough_prompt_field_still_returns_raw() {
+        let result = LlmEnvelopeBuildResult::LocalSecretPassthrough {
+            prompt: "MY_TOKEN=fake_value".into(),
+            warnings: vec![],
+        };
+        match result {
+            LlmEnvelopeBuildResult::LocalSecretPassthrough { prompt, .. } => {
+                assert_eq!(
+                    prompt, "MY_TOKEN=fake_value",
+                    "Raw prompt must be accessible via field"
+                );
+            }
+            _ => panic!("Expected LocalSecretPassthrough"),
+        }
     }
 }

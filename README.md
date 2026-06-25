@@ -85,6 +85,33 @@ The boundary is defined in `src/llm.rs`.
 - Return only a rewritten prompt — do not execute tasks
 - Deterministic modes (`pass_through`, `minimal_compile`, `local_compile`) run before LLM
 
+## LLM Safety Envelope
+
+This is the safe prompt contract for future LLM-assisted compilation.
+**No real LLM calls are enabled yet.**
+
+The LLM path receives only the latest user-authored prompt plus constraints.
+It is asked only to **rewrite and structure** the prompt — never to execute
+tasks, modify files, run commands, or invent stack choices / providers /
+services / tools / files / scope.
+
+**The envelope includes:**
+- Original user prompt
+- Detected category
+- Explicit rewrite-only instruction
+- No-invention constraints (frameworks, providers, files, architecture)
+- Preservation constraints (context, intent, project conventions)
+
+**The envelope never includes:**
+- System/developer/assistant/tool messages
+- File contents (unless in the original user prompt)
+- API keys, env var values, or runtime secrets
+
+**Expected response contract:**
+```json
+{"compiled_prompt": "...", "warnings": []}
+```
+
 ## Runtime LLM Provider Config
 
 Future LLM providers are configured at runtime. Raw API keys are read from

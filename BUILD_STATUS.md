@@ -136,6 +136,9 @@ tests/
 
 **Post-review patch:** api_key_env is now validated as an env-var name before lookup. Invalid names (containing hyphens, spaces, =, /, etc.) are rejected. Errors redact the invalid value. 6 new validation tests added.
 
+
+**Post-review patch:** Codex P2 #1 fixed (JSON response instruction). Codex P2 #2 fixed (secret redaction before LLM envelope). Local secret passthrough added (marker + explicit unsafe opt-in). Raw secrets never sent to upstream LLM envelope. Normal quotes are not a bypass. 10 new envelope/redaction/passthrough tests.
+
 ### Test Results
 
 ```
@@ -509,3 +512,28 @@ a safe fallback.
 
 ### Test Results
 **78 tests: 78 passed, 0 failed, 0 ignored**
+
+---
+
+## Phase 014 — LLM Safety Envelope
+
+### What Changed
+- Extended `src/llm.rs` with `LlmPromptEnvelope`, `LlmResponseContract`,
+  and `build_llm_prompt_envelope()` — the safe instruction contract for
+  future LLM-assisted compilation.
+- README: new LLM Safety Envelope section
+- 8 envelope tests: original prompt, category, no-invention rules,
+  rewrite-only instruction, no secrets/api-keys, no system role content,
+  response contract can hold output, response contract can hold warnings
+
+### Safety Rules
+- Envelope contains only the latest user-authored prompt + constraints
+- Never includes system/developer/assistant/tool messages
+- Never includes API keys, env var values, or runtime secrets
+- LLM is asked only to rewrite/structure — never execute tasks
+
+### Real LLM Calls Enabled?
+**No.** No external API calls. No network dependency.
+
+### Test Results
+**96 tests: 96 passed, 0 failed, 0 ignored**
