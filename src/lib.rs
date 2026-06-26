@@ -11,6 +11,7 @@ pub mod llm;
 pub mod llm_config;
 pub mod llm_orchestrate;
 pub mod llm_parser;
+pub mod llm_provider_registry;
 pub mod openai_compatible;
 pub mod openrouter;
 pub mod rules;

@@ -527,6 +527,17 @@ fn test_llm_without_provider_returns_error() {
         !output.status.success(),
         "--llm without --provider must fail"
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("openrouter"),
+        "Error must mention openrouter: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("groq"),
+        "Error must mention groq: {}",
+        stderr
+    );
 }
 
 #[test]

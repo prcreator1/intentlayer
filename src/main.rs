@@ -283,20 +283,26 @@ fn main() {
     };
 
     // Validate LLM args
-    if args.llm {
+    let provider_kind = if args.llm {
         if args.provider.is_none() {
-            eprintln!("Error: --llm requires --provider openrouter");
-            process::exit(1);
-        }
-        let p = args.provider.as_deref().unwrap();
-        if p != "openrouter" && p != "groq" {
+            let list = intentlayer::llm_provider_registry::supported_provider_list_for_error();
             eprintln!(
-                "Error: unsupported LLM provider '{}'. Supported providers: openrouter, groq",
-                p
+                "Error: --llm requires --provider <provider>. Supported providers: {}",
+                list
             );
             process::exit(1);
         }
-    }
+        let p = args.provider.as_deref().unwrap();
+        match intentlayer::llm_provider_registry::parse_provider(p) {
+            Ok(kind) => Some(kind),
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                process::exit(1);
+            }
+        }
+    } else {
+        None
+    };
 
     let compiler = match load_compiler(&args.rules_path) {
         Ok(c) => c,
@@ -314,16 +320,13 @@ fn main() {
         }
     };
 
-    // Classification — must run before deciding LLM path
     let classification = {
         let rules = &compiler.rules;
         intentlayer::classifier::classify(&prompt_text, rules)
     };
 
-    let llm_eligible = args.llm
-        && (args.provider.as_deref() == Some("openrouter")
-            || args.provider.as_deref() == Some("groq"))
-        && classification.mode == intentlayer::classifier::Mode::LlmCompile;
+    let llm_eligible =
+        provider_kind.is_some() && classification.mode == intentlayer::classifier::Mode::LlmCompile;
 
     // Only require API key when an actual LLM call will be made
     if llm_eligible && args.api_key_env.is_none() {
@@ -332,9 +335,13 @@ fn main() {
     }
 
     let output = if llm_eligible {
-        match args.provider.as_deref() {
-            Some("openrouter") => run_llm_openrouter(&prompt_text, &classification.category, &args),
-            Some("groq") => run_llm_groq(&prompt_text, &classification.category, &args),
+        match provider_kind {
+            Some(intentlayer::llm_provider_registry::ProviderKind::OpenRouter) => {
+                run_llm_openrouter(&prompt_text, &classification.category, &args)
+            }
+            Some(intentlayer::llm_provider_registry::ProviderKind::Groq) => {
+                run_llm_groq(&prompt_text, &classification.category, &args)
+            }
             _ => compiler.compile_prompt(&prompt_text),
         }
     } else {
@@ -367,8 +374,15 @@ fn run_llm_openrouter(
     _category: &str,
     #[allow(unused_variables)] _args: &Args,
 ) -> intentlayer::compiler::CompileOutput {
-    eprintln!("Error: OpenRouter HTTP transport is not enabled.");
-    eprintln!("Rebuild with --features openrouter-http.");
+    use intentlayer::llm_provider_registry::ProviderKind;
+    eprintln!(
+        "Error: {} HTTP transport is not enabled.",
+        ProviderKind::OpenRouter.display_name()
+    );
+    eprintln!(
+        "Rebuild with --features {}.",
+        ProviderKind::OpenRouter.feature_name()
+    );
     process::exit(1);
 }
 
@@ -381,16 +395,21 @@ fn run_llm_openrouter(
     use intentlayer::llm::LlmEnvelopeOptions;
     use intentlayer::llm_config::{resolve_from_env, LlmProviderConfig};
     use intentlayer::llm_orchestrate::compile_with_llm_orchestration;
+    use intentlayer::llm_provider_registry::ProviderKind;
     use intentlayer::openrouter::{OpenRouterProvider, ReqwestOpenRouterTransport};
 
+    let kind = ProviderKind::OpenRouter;
     let api_key_env = args.api_key_env.clone().unwrap_or_default();
     let config = LlmProviderConfig {
-        provider: "openai-compatible".into(),
+        provider: kind.name().into(),
         base_url: args
             .base_url
             .clone()
-            .or(Some("https://openrouter.ai/api/v1".into())),
-        model: args.model.clone().unwrap_or_else(|| "gpt-4.1-mini".into()),
+            .or(Some(kind.default_base_url().into())),
+        model: args
+            .model
+            .clone()
+            .unwrap_or_else(|| kind.default_model().into()),
         api_key_env: Some(api_key_env),
         timeout_seconds: args.timeout_seconds.unwrap_or(30),
         max_tokens: args.max_tokens.unwrap_or(800),
@@ -425,8 +444,15 @@ fn run_llm_groq(
     _category: &str,
     #[allow(unused_variables)] _args: &Args,
 ) -> intentlayer::compiler::CompileOutput {
-    eprintln!("Error: Groq HTTP transport is not enabled.");
-    eprintln!("Rebuild with --features groq-http.");
+    use intentlayer::llm_provider_registry::ProviderKind;
+    eprintln!(
+        "Error: {} HTTP transport is not enabled.",
+        ProviderKind::Groq.display_name()
+    );
+    eprintln!(
+        "Rebuild with --features {}.",
+        ProviderKind::Groq.feature_name()
+    );
     process::exit(1);
 }
 
@@ -436,18 +462,20 @@ fn run_llm_groq(prompt: &str, category: &str, args: &Args) -> intentlayer::compi
     use intentlayer::llm::LlmEnvelopeOptions;
     use intentlayer::llm_config::{resolve_from_env, LlmProviderConfig};
     use intentlayer::llm_orchestrate::compile_with_llm_orchestration;
+    use intentlayer::llm_provider_registry::ProviderKind;
 
+    let kind = ProviderKind::Groq;
     let api_key_env = args.api_key_env.clone().unwrap_or_default();
     let config = LlmProviderConfig {
-        provider: "groq".into(),
+        provider: kind.name().into(),
         base_url: args
             .base_url
             .clone()
-            .or(Some("https://api.groq.com/openai/v1".into())),
+            .or(Some(kind.default_base_url().into())),
         model: args
             .model
             .clone()
-            .unwrap_or_else(|| "llama-3.3-70b-versatile".into()),
+            .unwrap_or_else(|| kind.default_model().into()),
         api_key_env: Some(api_key_env),
         timeout_seconds: args.timeout_seconds.unwrap_or(30),
         max_tokens: args.max_tokens.unwrap_or(800),
