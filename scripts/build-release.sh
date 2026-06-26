@@ -22,15 +22,29 @@ mkdir -p "${DIST_DIR}"
 # Copy binary
 cp "${TARGET_DIR}/intentlayer" "${DIST_DIR}/${ARTIFACT}"
 
-# Generate checksums
-if command -v sha256sum &>/dev/null; then
-    sha256sum "${DIST_DIR}/${ARTIFACT}" > "${DIST_DIR}/sha256sums.txt"
-elif command -v shasum &>/dev/null; then
-    shasum -a 256 "${DIST_DIR}/${ARTIFACT}" > "${DIST_DIR}/sha256sums.txt"
-fi
-
 # Copy docs
 cp README.md LICENSE CHANGELOG.md "${DIST_DIR}/" 2>/dev/null || true
+
+# Generate checksums (artifact-relative paths inside DIST_DIR)
+(
+  cd "${DIST_DIR}"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "${ARTIFACT}" > sha256sums.txt
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "${ARTIFACT}" > sha256sums.txt
+  else
+    echo "No SHA-256 tool found" >&2
+    exit 1
+  fi
+)
+
+# Verify checksums
+(
+  cd "${DIST_DIR}"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum -c sha256sums.txt
+  fi
+)
 
 echo "=== Artifacts ==="
 ls -la "${DIST_DIR}/"

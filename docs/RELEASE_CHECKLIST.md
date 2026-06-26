@@ -21,6 +21,8 @@ Before tagging a release, verify:
 - [ ] `./scripts/build-release.sh` (executable, host-aware artifact)
 - [ ] `./target/release/intentlayer --version`
 - [ ] `./target/release/intentlayer --prompt "fix parser bug" --compiled-only`
+- [ ] `sha256sums.txt` uses artifact-relative filenames (not full dist path)
+- [ ] `sha256sum -c sha256sums.txt` passes from inside dist version directory (sha256sum available)
 
 ## Docs
 - [ ] README version/stale wording checked
