@@ -8,7 +8,7 @@ Designed for: Claude Code, opencode, Cursor-style agents, Codex-style agents, He
 
 ## Status
 
-Phase 025 — dogfood and install readiness. See `BUILD_STATUS.md`.
+Phase 026 — release readiness (private beta `0.1.0-beta.1`). See `BUILD_STATUS.md`.
 
 ## Quick Start
 
@@ -73,7 +73,9 @@ When neither `--prompt` nor `--input` is provided, JSON is read from stdin.
 Default compile remains local/deterministic.
 
 **Current state:**
-- Architecture/planning prompts route to `llm_compile` mode
+- Provider list: OpenRouter, Groq
+- Supported feature flags: `openrouter-http`, `groq-http`
+- Release version: `0.1.0-beta.1` (private beta)
 - Live provider calls available only with `--llm` + `--provider` + feature gate + env key
 - OpenRouter and Groq providers validated end-to-end
 - A deterministic local template is used when providers are unavailable
@@ -278,11 +280,14 @@ to transform messy prompts before execution.
 
 ### Future GitHub Releases
 
-Release artifacts (planned):
-- `intentlayer-linux-x86_64` — Linux binary
-- `intentlayer-macos-x86_64` — macOS binary
-- `intentlayer-windows-x86_64.exe` — Windows binary
-- `sha256sums.txt` — checksum file
+Release artifacts follow the pattern `intentlayer-{os}-{arch}` and are
+built via `scripts/build-release.sh`. The script detects host OS/arch at
+build time and names the artifact accordingly:
+
+- `intentlayer-linux-x86_64`
+- `intentlayer-linux-aarch64`
+- `intentlayer-darwin-x86_64`
+- `intentlayer-darwin-arm64`
 
 ## Agent Integration Contract
 
