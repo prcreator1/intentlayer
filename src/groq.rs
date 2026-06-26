@@ -6,7 +6,9 @@
 
 use crate::llm::{LlmCompileRequest, LlmCompileResponse, LlmError, LlmProvider};
 use crate::llm_config::ResolvedLlmProviderConfig;
-use serde::{Deserialize, Serialize};
+#[allow(unused_imports)]
+use crate::openai_compatible::build_envelope_messages;
+use serde::Serialize;
 
 // ── Groq request/response types ──────────────────────────────────────
 
@@ -21,51 +23,15 @@ pub struct GroqChatRequest {
     pub stream: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct GroqMessage {
-    pub role: String,
-    pub content: String,
-}
+pub use crate::openai_compatible::Message as GroqMessage;
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct GroqChatResponse {
-    pub choices: Vec<GroqChoice>,
-    #[serde(default)]
-    pub model: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct GroqChoice {
-    pub message: GroqResponseMessage,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct GroqResponseMessage {
-    pub content: Option<String>,
-}
+pub use crate::openai_compatible::{
+    ChatResponse as GroqChatResponse, Choice as GroqChoice, ResponseMessage as GroqResponseMessage,
+};
 
 // ── Errors ───────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone)]
-pub enum GroqError {
-    MissingApiKey,
-    TransportFailed(String),
-    InvalidResponse(String),
-    EmptyChoices,
-    EmptyMessageContent,
-}
-
-impl std::fmt::Display for GroqError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            GroqError::MissingApiKey => write!(f, "Groq API key not configured"),
-            GroqError::TransportFailed(msg) => write!(f, "Groq transport failed: {}", msg),
-            GroqError::InvalidResponse(msg) => write!(f, "Groq returned invalid response: {}", msg),
-            GroqError::EmptyChoices => write!(f, "Groq returned no choices"),
-            GroqError::EmptyMessageContent => write!(f, "Groq message content is empty"),
-        }
-    }
-}
+pub use crate::openai_compatible::ProviderError as GroqError;
 
 // ── Transport ────────────────────────────────────────────────────────
 
@@ -80,35 +46,18 @@ pub fn build_groq_request(
     llm_req: &LlmCompileRequest,
     config: &ResolvedLlmProviderConfig,
 ) -> GroqChatRequest {
-    let system_msg = format!(
-        "You are IntentLayer, a prompt compiler. Your only job is to rewrite \
-         the user prompt into a compact, context-preserving, execution-grade prompt.\n\n\
-         Category: {}\n\n\
-         Must preserve:\n{}\n\n\
-         Must never invent:\n{}\n\n\
-         Return only valid JSON: {{\"compiled_prompt\":\"...\",\"warnings\":[]}}",
-        llm_req.category,
-        llm_req.must_preserve.join("\n- "),
-        llm_req.must_not_invent.join("\n- "),
-    );
-
-    let user_msg = format!(
-        "Instruction:\n{}\n\nRedacted original prompt:\n{}",
-        llm_req.instruction, llm_req.original_prompt
+    let messages = build_envelope_messages(
+        &llm_req.category,
+        &llm_req.instruction,
+        &llm_req.original_prompt,
+        &llm_req.must_preserve,
+        &llm_req.must_not_invent,
+        "Return only valid JSON: {\"compiled_prompt\":\"...\",\"warnings\":[]}",
     );
 
     GroqChatRequest {
         model: config.model.clone(),
-        messages: vec![
-            GroqMessage {
-                role: "system".into(),
-                content: system_msg,
-            },
-            GroqMessage {
-                role: "user".into(),
-                content: user_msg,
-            },
-        ],
+        messages,
         temperature: Some(config.temperature),
         max_completion_tokens: Some(config.max_tokens),
         stream: false,
@@ -130,11 +79,9 @@ impl<T: GroqTransport> GroqProvider<T> {
 
 impl<T: GroqTransport> LlmProvider for GroqProvider<T> {
     fn compile(&self, request: &LlmCompileRequest) -> Result<LlmCompileResponse, LlmError> {
-        let api_key = self
-            .config
-            .api_key
-            .as_deref()
-            .ok_or_else(|| LlmError::ProviderError(GroqError::MissingApiKey.to_string()))?;
+        let api_key = self.config.api_key.as_deref().ok_or_else(|| {
+            LlmError::ProviderError(GroqError::MissingApiKey("Groq".into()).to_string())
+        })?;
 
         let groq_request = build_groq_request(request, &self.config);
 

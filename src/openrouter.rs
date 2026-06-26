@@ -6,6 +6,8 @@
 
 use crate::llm::{LlmCompileRequest, LlmCompileResponse, LlmError, LlmProvider};
 use crate::llm_config::ResolvedLlmProviderConfig;
+#[allow(unused_imports)]
+use crate::openai_compatible::build_envelope_messages;
 
 // ── OpenRouter request/response types ────────────────────────────────
 
@@ -25,11 +27,7 @@ pub struct OpenRouterChatRequest {
     pub provider: Option<OpenRouterProviderConfig>,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct OpenRouterMessage {
-    pub role: String,
-    pub content: String,
-}
+pub use crate::openai_compatible::Message as OpenRouterMessage;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct OpenRouterResponseFormat {
@@ -50,56 +48,12 @@ pub struct OpenRouterProviderConfig {
     pub require_parameters: bool,
 }
 
-/// OpenRouter chat completion response.
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct OpenRouterChatResponse {
-    pub choices: Vec<OpenRouterChoice>,
-    #[serde(default)]
-    pub model: String,
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct OpenRouterChoice {
-    pub message: OpenRouterResponseMessage,
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct OpenRouterResponseMessage {
-    pub content: Option<String>,
-}
-
-// ── Error types ──────────────────────────────────────────────────────
-
-#[derive(Debug, Clone)]
-pub enum OpenRouterError {
-    MissingApiKey,
-    TransportFailed(String),
-    InvalidResponse(String),
-    EmptyChoices,
-    EmptyMessageContent,
-    UnsupportedConfig(String),
-}
-
-impl std::fmt::Display for OpenRouterError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            OpenRouterError::MissingApiKey => write!(f, "OpenRouter API key not configured"),
-            OpenRouterError::TransportFailed(msg) => {
-                write!(f, "OpenRouter transport failed: {}", msg)
-            }
-            OpenRouterError::InvalidResponse(msg) => {
-                write!(f, "OpenRouter returned invalid response: {}", msg)
-            }
-            OpenRouterError::EmptyChoices => write!(f, "OpenRouter returned no choices"),
-            OpenRouterError::EmptyMessageContent => {
-                write!(f, "OpenRouter message content is empty")
-            }
-            OpenRouterError::UnsupportedConfig(msg) => {
-                write!(f, "OpenRouter config unsupported: {}", msg)
-            }
-        }
-    }
-}
+// ── Re-exports from shared core ──────────────────────────────────────
+pub use crate::openai_compatible::ProviderError as OpenRouterError;
+pub use crate::openai_compatible::{
+    ChatResponse as OpenRouterChatResponse, Choice as OpenRouterChoice,
+    ResponseMessage as OpenRouterResponseMessage,
+};
 
 // ── Transport abstraction ───────────────────────────────────────────
 
@@ -122,20 +76,13 @@ pub fn build_openrouter_request(
     llm_req: &LlmCompileRequest,
     config: &ResolvedLlmProviderConfig,
 ) -> OpenRouterChatRequest {
-    let system_msg = format!(
-        "You are IntentLayer, a prompt compiler. Your only job is to rewrite \
-         the user prompt into a compact, context-preserving, execution-grade prompt.\n\n\
-         Category: {}\n\n\
-         Must preserve:\n{}\n\n\
-         Must never invent:\n{}",
-        llm_req.category,
-        llm_req.must_preserve.join("\n- "),
-        llm_req.must_not_invent.join("\n- "),
-    );
-
-    let user_msg = format!(
-        "Instruction:\n{}\n\nRedacted original prompt:\n{}",
-        llm_req.instruction, llm_req.original_prompt
+    let messages = build_envelope_messages(
+        &llm_req.category,
+        &llm_req.instruction,
+        &llm_req.original_prompt,
+        &llm_req.must_preserve,
+        &llm_req.must_not_invent,
+        "Return only valid JSON matching: {\"compiled_prompt\":\"...\",\"warnings\":[]}. No markdown.",
     );
 
     let response_schema = serde_json::json!({
@@ -157,16 +104,7 @@ pub fn build_openrouter_request(
 
     OpenRouterChatRequest {
         model: config.model.clone(),
-        messages: vec![
-            OpenRouterMessage {
-                role: "system".into(),
-                content: system_msg,
-            },
-            OpenRouterMessage {
-                role: "user".into(),
-                content: user_msg,
-            },
-        ],
+        messages,
         temperature: Some(config.temperature),
         max_tokens: Some(config.max_tokens),
         stream: false,
@@ -199,23 +137,18 @@ impl<T: OpenRouterTransport> OpenRouterProvider<T> {
 
 impl<T: OpenRouterTransport> LlmProvider for OpenRouterProvider<T> {
     fn compile(&self, request: &LlmCompileRequest) -> Result<LlmCompileResponse, LlmError> {
-        let api_key =
-            self.config.api_key.as_deref().ok_or_else(|| {
-                LlmError::ProviderError(OpenRouterError::MissingApiKey.to_string())
-            })?;
+        let api_key = self.config.api_key.as_deref().ok_or_else(|| {
+            LlmError::ProviderError(OpenRouterError::MissingApiKey("OpenRouter".into()).to_string())
+        })?;
 
         let or_request = build_openrouter_request(request, &self.config);
 
         match self.transport.send(&or_request, api_key) {
             Ok(resp) => {
-                let choice = resp.choices.first().ok_or_else(|| {
-                    LlmError::ProviderError(OpenRouterError::EmptyChoices.to_string())
-                })?;
-                let content = choice.message.content.as_deref().ok_or_else(|| {
-                    LlmError::ProviderError(OpenRouterError::EmptyMessageContent.to_string())
-                })?;
+                let content = crate::openai_compatible::extract_choice_content(&resp)
+                    .map_err(|e| LlmError::ProviderError(e.to_string()))?;
                 Ok(LlmCompileResponse {
-                    compiled_prompt: content.to_string(),
+                    compiled_prompt: content,
                     warnings: vec![],
                 })
             }
@@ -325,15 +258,7 @@ mod http_transport {
     }
 
     fn map_http_status(status: reqwest::StatusCode) -> OpenRouterError {
-        match status.as_u16() {
-            401 => OpenRouterError::TransportFailed("unauthorized (401)".into()),
-            402 => OpenRouterError::TransportFailed("payment required (402)".into()),
-            408 => OpenRouterError::TransportFailed("request timed out (408)".into()),
-            413 => OpenRouterError::TransportFailed("request too large (413)".into()),
-            429 => OpenRouterError::TransportFailed("rate limited (429)".into()),
-            500..=599 => OpenRouterError::TransportFailed("upstream service unavailable".into()),
-            _ => OpenRouterError::TransportFailed(format!("HTTP {}", status.as_u16())),
-        }
+        crate::openai_compatible::sanitize_http_status(status.as_u16())
     }
 
     #[cfg(test)]

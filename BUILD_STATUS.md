@@ -720,3 +720,26 @@ Default model: `llama-3.3-70b-versatile`
 ### Test Results
 **187 tests (default) / 189 tests (groq-http or openrouter-http)**
 All pass. 2 live smoke tests ignored.
+
+---
+
+## Phase 022 — Shared OpenAI-Compatible Provider Core
+
+### What Changed
+- `src/openai_compatible.rs` — shared types and helpers for OpenAI-compatible providers
+  - `Message`, `ChatResponse`, `Choice`, `ResponseMessage` — shared types
+  - `ProviderError` — sanitized error with no API keys
+  - `extract_choice_content()` — shared response extraction
+  - `sanitize_http_status()` — status-code-only HTTP errors
+  - `build_envelope_messages()` — shared system/user message builder
+- `src/openrouter.rs` and `src/groq.rs` now consume the shared core:
+  - Shared `Message` replaces local OpenRouter/Groq message structs
+  - Shared `ChatResponse`/`Choice`/`ResponseMessage` replace local response structs
+  - Shared `extract_choice_content()` handles response extraction
+  - Shared `sanitize_http_status()` handles HTTP status errors
+  - Shared `build_envelope_messages()` builds the system/user envelope
+  - Provider-specific fields preserved (max_tokens vs max_completion_tokens)
+
+### Test Results
+**195 tests (default) / 198 tests (combined features)**
+All pass. 2 live smoke tests ignored.
