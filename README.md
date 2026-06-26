@@ -8,7 +8,7 @@ Designed for: Claude Code, opencode, Cursor-style agents, Codex-style agents, He
 
 ## Status
 
-Phase 005 — CLI usability. See `BUILD_STATUS.md`.
+Phase 025 — dogfood and install readiness. See `BUILD_STATUS.md`.
 
 ## Quick Start
 
@@ -65,7 +65,7 @@ When neither `--prompt` nor `--input` is provided, JSON is read from stdin.
 | `pass_through` | Exact prompt unchanged (slash commands, already-good prompts) |
 | `minimal_compile` | 1-15 token expansion (continue, resume, try again) |
 | `local_compile` | Category-based rewrite (repair, feature, refactor, etc.) |
-| `llm_compile` | Structured prompt generation (architecture, planning) — stub in v0.1 |
+| `llm_compile` | Structured prompt generation (architecture, planning) — requires --llm + provider |
 
 ## LLM-Assisted Compile Path
 
