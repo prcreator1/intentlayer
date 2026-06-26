@@ -117,6 +117,62 @@ fn smoke_real_llm_compile_call() {
     }
 }
 
+// ── Groq live smoke test ──────────────────────────────────────────
+
+#[test]
+#[ignore = "live smoke test — requires INTENTLAYER_RUN_LIVE_GROQ_SMOKE=1 + groq-http + GROQ_API_KEY"]
+fn smoke_real_groq_compile_call() {
+    if env::var("INTENTLAYER_RUN_LIVE_GROQ_SMOKE").unwrap_or_default() != "1" {
+        println!("SKIPPED: INTENTLAYER_RUN_LIVE_GROQ_SMOKE=1 not set");
+        return;
+    }
+    if cfg!(not(feature = "groq-http")) {
+        println!("SKIPPED: groq-http feature not enabled");
+        return;
+    }
+    if env::var("GROQ_API_KEY").unwrap_or_default().is_empty() {
+        println!("SKIPPED: GROQ_API_KEY not set or empty");
+        return;
+    }
+    let prompt = "Design a retry wrapper for failed HTTP requests. Keep it provider-agnostic.";
+    let (ok, stdout, stderr) = run_intentlayer(&[
+        "--prompt",
+        prompt,
+        "--llm",
+        "--provider",
+        "groq",
+        "--api-key-env",
+        "GROQ_API_KEY",
+        "--json",
+    ]);
+    assert!(ok, "Live Groq call must exit 0; stderr: {}", stderr);
+    assert!(
+        stdout.contains("compiled_prompt"),
+        "Must have compiled_prompt"
+    );
+    assert!(stdout.contains("warnings"), "Must have warnings");
+    let lower = stdout.to_lowercase();
+    assert!(
+        !lower.contains("llm provider failed")
+            && !lower.contains("fell back to local compilation")
+            && !lower.contains("fallback"),
+        "Live Groq must prove success, not fallback. stdout: {} stderr: {}",
+        stdout,
+        stderr
+    );
+    let api_key = env::var("GROQ_API_KEY").unwrap_or_default();
+    if !api_key.is_empty() {
+        assert!(
+            !stdout.contains(&api_key),
+            "stdout must not contain API key"
+        );
+        assert!(
+            !stderr.contains(&api_key),
+            "stderr must not contain API key"
+        );
+    }
+}
+
 // ── Smoke gating tests (always run, no network) ────────────────────
 
 #[test]
