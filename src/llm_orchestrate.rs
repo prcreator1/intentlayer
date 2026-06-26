@@ -778,4 +778,99 @@ mod tests {
             err
         );
     }
+
+    // ── Phase 028: Compiled-only fallback tests ────────────────────
+
+    /// Simulates `--compiled-only --llm --allow-llm-fallback` when provider fails.
+    /// The orchestration output must carry a non-empty compiled_prompt suitable for
+    /// compiled-only handoff, a provider_error marker, and sanitized fallback warnings.
+    #[test]
+    fn test_compiled_only_fallback_produces_handoff_ready_output() {
+        let provider = MockProviderFails;
+        let output = compile_with_llm_orchestration(
+            "fix the parser bug in src/parser.rs",
+            "repair_debug",
+            &provider,
+            &default_opts(),
+        );
+
+        // Provider failure marker must be present (triggers --allow-llm-fallback path)
+        assert!(
+            output.provider_error.is_some(),
+            "Must have provider_error for fallback detection"
+        );
+
+        // Fallback compiled_prompt must be non-empty (content for --compiled-only handoff)
+        assert!(
+            !output.compiled_prompt.trim().is_empty(),
+            "Compiled prompt must not be empty for compiled-only handoff"
+        );
+
+        // Fallback text should reference the original prompt topic
+        assert!(
+            output.compiled_prompt.contains("fix the parser bug")
+                || output.compiled_prompt.contains("[REDACTED")
+                || output.compiled_prompt.contains("parser"),
+            "Fallback should preserve prompt context: {}",
+            output.compiled_prompt
+        );
+
+        // Warnings must carry the provider failure notice (shows in stderr with [fallback])
+        assert!(
+            output
+                .warnings
+                .iter()
+                .any(|w| w.contains("provider failed")),
+            "Warnings must document provider failure: {:?}",
+            output.warnings
+        );
+    }
+
+    /// Provider failure with secret-laden error + compiled-only fallback must not
+    /// leak keys or URLs anywhere in the output (provider_error, warnings, or
+    /// compiled_prompt).
+    #[test]
+    fn test_compiled_only_fallback_sanitized_no_secret_leak() {
+        struct MockFailsSensitive;
+        impl LlmProvider for MockFailsSensitive {
+            fn compile(
+                &self,
+                _request: &LlmCompileRequest,
+            ) -> Result<LlmCompileResponse, LlmError> {
+                Err(LlmError::ProviderError(
+                    "HTTP 401 from https://api.groq.com/openai/v1: key gsk_test12345abc is invalid"
+                        .into(),
+                ))
+            }
+        }
+        let output = compile_with_llm_orchestration(
+            "fix auth bug",
+            "security_permissions_auth",
+            &MockFailsSensitive,
+            &default_opts(),
+        );
+
+        let all_text = format!("{} {:?}", output.compiled_prompt, output.warnings,);
+        let err_text = output.provider_error.as_deref().unwrap_or("");
+
+        // No raw key in any output field
+        assert!(!all_text.contains("gsk_test12345abc"));
+        assert!(!err_text.contains("gsk_test12345abc"));
+
+        // No internal URL in any output field
+        assert!(!all_text.contains("api.groq.com"));
+        assert!(!err_text.contains("api.groq.com"));
+
+        // Sanitized key marker should appear somewhere (proves redaction fired)
+        assert!(
+            all_text.contains("[REDACTED_KEY]") || err_text.contains("[REDACTED_KEY]"),
+            "Key must be redacted"
+        );
+
+        // URL must be redacted
+        assert!(
+            all_text.contains("[REDACTED_URL]") || err_text.contains("[REDACTED_URL]"),
+            "URL must be redacted"
+        );
+    }
 }
