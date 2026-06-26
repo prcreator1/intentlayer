@@ -344,11 +344,19 @@ fn main() {
     let output = if llm_eligible {
         match provider_kind {
             Some(intentlayer::llm_provider_registry::ProviderKind::OpenRouter) => {
-                run_llm_openrouter(&prompt_text, &classification.category, &args)
+                run_llm_openrouter(
+                    &prompt_text,
+                    &classification.category,
+                    &args,
+                    &compiler.rules,
+                )
             }
-            Some(intentlayer::llm_provider_registry::ProviderKind::Groq) => {
-                run_llm_groq(&prompt_text, &classification.category, &args)
-            }
+            Some(intentlayer::llm_provider_registry::ProviderKind::Groq) => run_llm_groq(
+                &prompt_text,
+                &classification.category,
+                &args,
+                &compiler.rules,
+            ),
             _ => compiler.compile_prompt(&prompt_text),
         }
     } else {
@@ -403,6 +411,7 @@ fn run_llm_openrouter(
     _prompt: &str,
     _category: &str,
     #[allow(unused_variables)] _args: &Args,
+    _rules: &intentlayer::rules::RuleSet,
 ) -> intentlayer::compiler::CompileOutput {
     use intentlayer::llm_provider_registry::ProviderKind;
     eprintln!(
@@ -421,6 +430,7 @@ fn run_llm_openrouter(
     prompt: &str,
     category: &str,
     args: &Args,
+    rules: &intentlayer::rules::RuleSet,
 ) -> intentlayer::compiler::CompileOutput {
     use intentlayer::llm::LlmEnvelopeOptions;
     use intentlayer::llm_config::{resolve_from_env, LlmProviderConfig};
@@ -465,7 +475,7 @@ fn run_llm_openrouter(
     let provider = OpenRouterProvider::new(resolved, transport);
     let opts = LlmEnvelopeOptions::default();
 
-    compile_with_llm_orchestration(prompt, category, &provider, &opts)
+    compile_with_llm_orchestration(prompt, category, &provider, &opts, Some(rules))
 }
 
 #[cfg(not(feature = "groq-http"))]
@@ -473,6 +483,7 @@ fn run_llm_groq(
     _prompt: &str,
     _category: &str,
     #[allow(unused_variables)] _args: &Args,
+    _rules: &intentlayer::rules::RuleSet,
 ) -> intentlayer::compiler::CompileOutput {
     use intentlayer::llm_provider_registry::ProviderKind;
     eprintln!(
@@ -487,7 +498,12 @@ fn run_llm_groq(
 }
 
 #[cfg(feature = "groq-http")]
-fn run_llm_groq(prompt: &str, category: &str, args: &Args) -> intentlayer::compiler::CompileOutput {
+fn run_llm_groq(
+    prompt: &str,
+    category: &str,
+    args: &Args,
+    rules: &intentlayer::rules::RuleSet,
+) -> intentlayer::compiler::CompileOutput {
     use intentlayer::groq::{GroqProvider, ReqwestGroqTransport};
     use intentlayer::llm::LlmEnvelopeOptions;
     use intentlayer::llm_config::{resolve_from_env, LlmProviderConfig};
@@ -531,5 +547,5 @@ fn run_llm_groq(prompt: &str, category: &str, args: &Args) -> intentlayer::compi
     let provider = GroqProvider::new(resolved, transport);
     let opts = LlmEnvelopeOptions::default();
 
-    compile_with_llm_orchestration(prompt, category, &provider, &opts)
+    compile_with_llm_orchestration(prompt, category, &provider, &opts, Some(rules))
 }

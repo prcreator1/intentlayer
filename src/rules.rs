@@ -130,6 +130,12 @@ impl RuleSet {
         None
     }
 
+    /// Find a rule by its category name (not pattern matching).
+    /// Returns the first rule matching the given category.
+    pub fn find_by_category(&self, category: &str) -> Option<&Rule> {
+        self.rules.iter().find(|r| r.category == category)
+    }
+
     /// Find a rule by its mode recommendation for a given category.
     pub fn find_by_category_and_mode(&self, category: &str, mode: &str) -> Option<&Rule> {
         self.rules

@@ -79,6 +79,23 @@ pub struct LlmEnvelopeOptions {
     /// Raw secrets are never placed in an upstream LLM envelope.
     #[allow(dead_code)]
     pub allow_local_secret_passthrough: bool,
+    /// Optional research rule context for the classified category.
+    /// When provided, the LLM instruction is enriched with category-specific
+    /// guidance from transformation_rules.json.
+    pub rule_context: Option<RuleContext>,
+}
+
+/// Research rule context passed into the LLM envelope for enriched compilation.
+#[derive(Debug, Clone)]
+pub struct RuleContext {
+    pub rule_id: String,
+    pub category: String,
+    pub risk: String,
+    pub transformation_principle: String,
+    pub compact_rewrite_template: Option<String>,
+    pub must_preserve: Vec<String>,
+    pub must_not_invent: Vec<String>,
+    pub max_expansion_guidance: String,
 }
 
 /// Result of building an LLM envelope.
@@ -244,75 +261,132 @@ pub fn build_llm_prompt_envelope(
         warnings.push(
             "Local secret passthrough marker ignored because unsafe opt-in is disabled".into(),
         );
-        let instruction = build_instruction(&redacted, category);
+        let instruction = build_instruction(&redacted, category, options);
         return LlmEnvelopeBuildResult::Envelope(LlmPromptEnvelope {
             original_prompt: redacted,
             category: category.to_string(),
             mode: "llm_compile".to_string(),
             instruction,
-            must_preserve: preservation_list(),
-            must_not_invent: no_invention_list(),
+            must_preserve: preservation_list(options),
+            must_not_invent: no_invention_list(options),
             warnings,
         });
     }
 
     // Normal path: redact secrets before building envelope
     let (redacted, warnings) = redact_secret_like_values(original_prompt);
-    let instruction = build_instruction(&redacted, category);
+    let instruction = build_instruction(&redacted, category, options);
 
     LlmEnvelopeBuildResult::Envelope(LlmPromptEnvelope {
         original_prompt: redacted,
         category: category.to_string(),
         mode: "llm_compile".to_string(),
         instruction,
-        must_preserve: preservation_list(),
-        must_not_invent: no_invention_list(),
+        must_preserve: preservation_list(options),
+        must_not_invent: no_invention_list(options),
         warnings,
     })
 }
 
-fn build_instruction(prompt: &str, category: &str) -> String {
-    format!(
-        "You are a prompt compiler.  Rewrite the following user-authored \
-         prompt into a compact, context-preserving, execution-grade prompt \
-         for a coding agent.\n\n\
-         Rules:\n\
-         - Preserve all context references (repo, error, file, plan, branch, etc.)\n\
-         - Never invent frameworks, providers, file paths, databases, \
-           architecture, deployment targets, or payment/auth providers\n\
-         - Do not add features beyond what the user requested\n\
-         - Do not ask clarification questions about context the agent may already have\n\
-         - Do not execute tasks, modify files, or run commands\n\
-         \n\
-         Return only valid JSON matching this exact shape:\n\
-         {{\"compiled_prompt\":\"...\",\"warnings\":[]}}\n\
-         \n\
-         Do not return markdown.\n\
-         Do not return prose outside JSON.\n\
-         \n\
-         Original prompt ({category}):\n{prompt}"
-    )
+fn build_instruction(prompt: &str, category: &str, options: &LlmEnvelopeOptions) -> String {
+    let senior = "\
+You are a senior prompt-engineering compiler for coding agents.
+
+Rewrite weak, vague, or underspecified prompts into compact, execution-grade prompts.
+
+You may add implied professional structure that a senior engineer would expect for this task: scope, constraints, verification, edge cases, risks, deliverables, safe implementation guidance, tests/checks, rollback/rollout notes, observability, idempotency/retry/backoff where relevant, and failure modes.
+
+You must not invent concrete implementation details not provided by the user or project context: frameworks, cloud providers, databases, queues, payment/auth providers, deployment targets, file paths, branch names, repo names, vendors, new architecture choices, dependencies, or scope beyond the request.
+
+Prefer useful specificity over mere rephrasing.
+
+If the original prompt is already strong and specific, preserve it with minimal changes.
+
+Return only valid JSON matching this exact shape:
+{\"compiled_prompt\":\"...\",\"warnings\":[]}
+
+Do not return markdown.
+Do not return prose outside JSON.
+";
+
+    let mut instruction = senior.to_string();
+
+    // Rule context: inject category-specific research guidance
+    if let Some(ref rule) = options.rule_context {
+        instruction.push_str("\nResearch rule:\n");
+        instruction.push_str(&format!("- rule_id: {}\n", rule.rule_id));
+        instruction.push_str(&format!("- category: {}\n", rule.category));
+        instruction.push_str(&format!("- risk: {}\n", rule.risk));
+        instruction.push_str(&format!(
+            "- transformation_principle: {}\n",
+            rule.transformation_principle
+        ));
+        if let Some(ref tmpl) = rule.compact_rewrite_template {
+            instruction.push_str(&format!("- compact_rewrite_template: {}\n", tmpl));
+        }
+        instruction.push_str(&format!(
+            "- must_preserve: {}\n",
+            rule.must_preserve.join(", ")
+        ));
+        instruction.push_str(&format!(
+            "- must_not_invent: {}\n",
+            rule.must_not_invent.join(", ")
+        ));
+        instruction.push_str(&format!(
+            "- max_expansion_guidance: {}\n",
+            rule.max_expansion_guidance
+        ));
+    } else {
+        // Universal senior compiler rules when no category-specific rule exists
+        instruction.push_str("\nUniversal rules:\n");
+        instruction.push_str(
+            "- Preserve all context references (repo, error, file, plan, branch, etc.)\n",
+        );
+        instruction.push_str("- Do not execute tasks, modify files, or run commands\n");
+        instruction.push_str("- Prefer minimal safe changes over comprehensive rewrites\n");
+    }
+
+    instruction.push_str(&format!("\nOriginal prompt ({}):\n{}", category, prompt));
+
+    instruction
 }
 
-fn preservation_list() -> Vec<String> {
-    vec![
-        "original context references".into(),
-        "stated user intent".into(),
-        "existing project constraints".into(),
-    ]
+fn preservation_list(options: &LlmEnvelopeOptions) -> Vec<String> {
+    if let Some(ref rule) = options.rule_context {
+        let mut items = rule.must_preserve.clone();
+        if !items.iter().any(|s| s.contains("context")) {
+            items.push("original context references".into());
+        }
+        items.push("stated user intent".into());
+        items
+    } else {
+        vec![
+            "original context references".into(),
+            "stated user intent".into(),
+            "existing project constraints".into(),
+        ]
+    }
 }
 
-fn no_invention_list() -> Vec<String> {
-    vec![
-        "frameworks".into(),
-        "providers".into(),
-        "file paths".into(),
-        "databases".into(),
-        "architecture".into(),
-        "deployment targets".into(),
-        "auth/payment providers".into(),
-        "scope beyond request".into(),
-    ]
+fn no_invention_list(options: &LlmEnvelopeOptions) -> Vec<String> {
+    if let Some(ref rule) = options.rule_context {
+        let mut items = rule.must_not_invent.clone();
+        items.push("frameworks not mentioned".into());
+        items.push("providers not mentioned".into());
+        items.push("scope beyond request".into());
+        items
+    } else {
+        vec![
+            "frameworks".into(),
+            "providers".into(),
+            "file paths".into(),
+            "databases".into(),
+            "architecture".into(),
+            "deployment targets".into(),
+            "auth/payment providers".into(),
+            "scope beyond request".into(),
+        ]
+    }
 }
 
 #[cfg(test)]
@@ -516,6 +590,7 @@ mod tests {
         let prompt = "[[INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]\nAdd MY_TOKEN=abc123 to .env\n[[/INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]";
         let opts = LlmEnvelopeOptions {
             allow_local_secret_passthrough: true,
+            ..Default::default()
         };
         let result = build_llm_prompt_envelope(prompt, "deployment_config_environment", &opts);
         match result {
@@ -539,6 +614,7 @@ mod tests {
         let prompt = "[[INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]\nuse sk-secret-key\n[[/INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]";
         let opts = LlmEnvelopeOptions {
             allow_local_secret_passthrough: true,
+            ..Default::default()
         };
         let result = build_llm_prompt_envelope(prompt, "repair_debug", &opts);
         // Must NOT return an Envelope containing the raw secret
@@ -558,6 +634,7 @@ mod tests {
         let prompt = "[[INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]\ntest\n[[/INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]";
         let opts = LlmEnvelopeOptions {
             allow_local_secret_passthrough: true,
+            ..Default::default()
         };
         let result = build_llm_prompt_envelope(prompt, "repair_debug", &opts);
         match result {
@@ -597,7 +674,7 @@ mod tests {
     fn test_envelope_includes_rewrite_only_instruction() {
         let env = envelope("test", "repair_debug");
         assert!(env.instruction.to_lowercase().contains("rewrite"));
-        assert!(env.instruction.to_lowercase().contains("never invent"));
+        assert!(env.instruction.to_lowercase().contains("must not invent"));
         assert!(env.instruction.to_lowercase().contains("do not execute"));
     }
 
