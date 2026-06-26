@@ -743,3 +743,23 @@ All pass. 2 live smoke tests ignored.
 ### Test Results
 **195 tests (default) / 198 tests (combined features)**
 All pass. 2 live smoke tests ignored.
+
+---
+
+## Phase 023 — Provider Registry and LLM Routing Cleanup
+
+### What Changed
+- `src/llm_provider_registry.rs` — central source of truth for providers:
+  `ProviderKind` enum, `parse_provider()`, `supported_provider_names()`,
+  `supported_provider_list_for_error()`, default base URL, default model,
+  feature name metadata.
+- `src/main.rs` — CLI now uses registry instead of scattered string checks.
+  Provider validation, eligibility, and dispatch all through registry.
+- 5 registry unit tests.
+
+### OpenRouter and Groq behavior preserved.
+No new provider added. No default network calls.
+
+### Test Results
+**200 tests (default) / 203 tests (combined features)**
+2 live smoke ignored. All pass.
