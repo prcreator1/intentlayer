@@ -800,3 +800,132 @@ fn test_allow_llm_fallback_flag_accepted() {
         stderr
     );
 }
+
+// --- Phase 029: Slash command pass-through tests ---
+
+#[test]
+fn test_slash_command_passes_through_exact_compiled_only() {
+    let output = run(&[
+        "--prompt",
+        "/review this exact command should pass through",
+        "--compiled-only",
+    ]);
+    assert!(output.status.success(), "Slash command should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout)
+        .trim_end_matches('\n')
+        .to_string();
+    assert_eq!(
+        stdout, "/review this exact command should pass through",
+        "Slash command must pass through exactly in compiled-only mode"
+    );
+}
+
+#[test]
+fn test_slash_command_passes_through_json() {
+    let output = run(&[
+        "--prompt",
+        "/review this exact command should pass through",
+        "--json",
+    ]);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Should parse JSON output");
+    assert_eq!(
+        parsed["compiled_prompt"], parsed["original_prompt"],
+        "compiled_prompt must equal original_prompt for slash command"
+    );
+    assert_eq!(parsed["mode"], "pass_through");
+    assert_eq!(parsed["changed"], false);
+    assert!(
+        parsed["warnings"].as_array().unwrap().is_empty(),
+        "Warnings must be empty for slash command"
+    );
+}
+
+#[test]
+fn test_multiple_slash_commands_pass_through() {
+    for cmd in &[
+        "/fix failing tests",
+        "/pr create summary",
+        "/clear",
+        "/model gpt-4",
+    ] {
+        let output = run(&["--prompt", cmd, "--compiled-only"]);
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout)
+            .trim_end_matches('\n')
+            .to_string();
+        assert_eq!(
+            stdout, *cmd,
+            "Slash command '{}' must pass through exactly",
+            cmd
+        );
+    }
+}
+
+#[test]
+fn test_slash_command_with_leading_whitespace_passes_through() {
+    // Prompt with leading whitespace: trimmed starts_with('/'), so passes through
+    let output = run(&[
+        "--prompt",
+        "  /review whitespace before slash",
+        "--compiled-only",
+    ]);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout)
+        .trim_end_matches('\n')
+        .to_string();
+    assert_eq!(
+        stdout, "  /review whitespace before slash",
+        "Whitespace-prefixed slash command must pass through with original whitespace"
+    );
+}
+
+#[test]
+fn test_non_slash_prompts_still_compile() {
+    let output = run(&["--prompt", "fix parser bug", "--compiled-only"]);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.trim().is_empty(),
+        "Non-slash prompt must still produce compiled output"
+    );
+    // Non-slash prompt should NOT equal the original
+    assert_ne!(
+        stdout.trim(),
+        "fix parser bug",
+        "Non-slash prompt should be compiled, not passed through"
+    );
+}
+
+#[test]
+fn test_slash_command_via_input_file_passes_through() {
+    let prompt = "/review this custom slash";
+    let json = serde_json::json!({"prompt": prompt});
+    let dir = std::env::temp_dir();
+    let path = dir.join("slash_input.json");
+    std::fs::write(&path, serde_json::to_vec(&json).unwrap()).unwrap();
+    let output = run(&["--input", path.to_str().unwrap(), "--compiled-only"]);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout)
+        .trim_end_matches('\n')
+        .to_string();
+    assert_eq!(
+        stdout, prompt,
+        "Slash via --input must pass through exactly"
+    );
+}
+
+#[test]
+fn test_slash_command_via_stdin_passes_through() {
+    let prompt = "/review this stdin slash";
+    let json = serde_json::json!({"prompt": prompt});
+    let json_str = serde_json::to_string(&json).unwrap();
+    let output = run_with_stdin(&["--compiled-only"], &json_str);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout)
+        .trim_end_matches('\n')
+        .to_string();
+    assert_eq!(stdout, prompt, "Slash via stdin must pass through exactly");
+}
