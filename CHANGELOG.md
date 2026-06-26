@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0-beta.1 (unreleased — private beta)
 
 ### Compiler
 - Prompt classification with 16+ categories
