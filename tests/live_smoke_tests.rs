@@ -26,6 +26,19 @@ fn can_run_smoke() -> Result<(), String> {
     Ok(())
 }
 
+fn can_run_groq_smoke() -> Result<(), String> {
+    if env::var("INTENTLAYER_RUN_LIVE_GROQ_SMOKE").unwrap_or_default() != "1" {
+        return Err("INTENTLAYER_RUN_LIVE_GROQ_SMOKE=1 not set".into());
+    }
+    if cfg!(not(feature = "groq-http")) {
+        return Err("groq-http feature not enabled".into());
+    }
+    if env::var("GROQ_API_KEY").unwrap_or_default().is_empty() {
+        return Err("GROQ_API_KEY not set or empty".into());
+    }
+    Ok(())
+}
+
 fn run_intentlayer(args: &[&str]) -> (bool, String, String) {
     let output = Command::new(env!("CARGO_BIN_EXE_intentlayer"))
         .args(args)
@@ -109,8 +122,8 @@ fn smoke_deterministic_bypass() {
 #[test]
 #[ignore = "live smoke test — requires INTENTLAYER_RUN_LIVE_GROQ_SMOKE=1 + groq-http + GROQ_API_KEY"]
 fn smoke_groq_deterministic_bypass() {
-    if env::var("INTENTLAYER_RUN_LIVE_GROQ_SMOKE").unwrap_or_default() != "1" {
-        println!("SKIPPED: INTENTLAYER_RUN_LIVE_GROQ_SMOKE=1 not set");
+    if let Err(r) = can_run_groq_smoke() {
+        println!("SKIPPED: {}", r);
         return;
     }
     let (ok, stdout, _stderr) = run_intentlayer(&[
@@ -166,16 +179,8 @@ fn smoke_real_llm_compile_call() {
 #[test]
 #[ignore = "live smoke test — requires INTENTLAYER_RUN_LIVE_GROQ_SMOKE=1 + groq-http + GROQ_API_KEY"]
 fn smoke_real_groq_compile_call() {
-    if env::var("INTENTLAYER_RUN_LIVE_GROQ_SMOKE").unwrap_or_default() != "1" {
-        println!("SKIPPED: INTENTLAYER_RUN_LIVE_GROQ_SMOKE=1 not set");
-        return;
-    }
-    if cfg!(not(feature = "groq-http")) {
-        println!("SKIPPED: groq-http feature not enabled");
-        return;
-    }
-    if env::var("GROQ_API_KEY").unwrap_or_default().is_empty() {
-        println!("SKIPPED: GROQ_API_KEY not set or empty");
+    if let Err(r) = can_run_groq_smoke() {
+        println!("SKIPPED: {}", r);
         return;
     }
     let prompt = "Design a retry wrapper for failed HTTP requests. Keep it provider-agnostic.";
