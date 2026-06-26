@@ -43,6 +43,11 @@ cp README.md LICENSE CHANGELOG.md "${DIST_DIR}/" 2>/dev/null || true
   cd "${DIST_DIR}"
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum -c sha256sums.txt
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 -c sha256sums.txt
+  else
+    echo "No SHA-256 tool found for verification" >&2
+    exit 1
   fi
 )
 

@@ -22,7 +22,7 @@ Before tagging a release, verify:
 - [ ] `./target/release/intentlayer --version`
 - [ ] `./target/release/intentlayer --prompt "fix parser bug" --compiled-only`
 - [ ] `sha256sums.txt` uses artifact-relative filenames (not full dist path)
-- [ ] `sha256sum -c sha256sums.txt` passes from inside dist version directory (sha256sum available)
+- [ ] `sha256sum -c sha256sums.txt` (Linux) or `shasum -a 256 -c sha256sums.txt` (macOS) passes from inside dist version directory
 
 ## Docs
 - [ ] README version/stale wording checked
