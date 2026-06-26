@@ -195,7 +195,7 @@ INTENTLAYER_RUN_LIVE_SMOKE=1 cargo test --features openrouter-http -- --ignored
 
 ## Dogfood / Install
 
-- `rust-toolchain.toml` pins the stable Rust toolchain.
+- Rust is required to build from source. Use an existing Rust toolchain compatible with the project. The release script itself makes no provider/network calls.
 - See [Private Dogfood Guide](docs/PRIVATE_DOGFOOD.md) and [Checklist](docs/DOGFOOD_CHECKLIST.md).
 - `AGENTS.md` contains coding-agent instructions; `llms.txt` provides an LLM repo map.
 

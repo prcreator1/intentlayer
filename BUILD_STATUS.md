@@ -823,8 +823,7 @@ HTTP transport → parser → fallback detection → invention guard → Compile
 - README stale status wording fixed (Phase 005 → Phase 026, "stub in v0.1" removed)
 - Release artifact naming made host-aware (OS/arch derived at build time)
 - Release script uses `--locked` for both `cargo metadata` and `cargo build --release`
-- Checksums record artifact basename only (not full dist path); verified inline after generation
-- `rust-toolchain.toml` added (pins stable channel)
+- Checksums record artifact basename only (not full dist path); verified inline (sha256sum or shasum -a 256 fallback)
 - `AGENTS.md` — original product laws restored (Core Law, Compiler Modes, Context-Preservation, No-Invention, Compactness, 16 Never-Do Rules) + bootstrap sections appended
 - `llms.txt` added (LLM repo map)
 - Version bumped to `0.1.0-beta.1` (private beta)

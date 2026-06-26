@@ -3,7 +3,7 @@
 Before tagging a release, verify:
 
 ## Core
-- [ ] `rust-toolchain.toml` present (stable channel pinned)
+- [ ] Rust toolchain available (compatible with the project — no toolchain file enforced for private beta)
 - [ ] `cargo test` — all tests pass
 - [ ] `cargo clippy --all-targets -- -D warnings` — clean
 - [ ] `cargo fmt --check` — clean
