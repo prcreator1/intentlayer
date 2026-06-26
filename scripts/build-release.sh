@@ -8,19 +8,26 @@ OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
 VERSION="$(cargo metadata --format-version 1 --no-deps --locked 2>/dev/null | grep -o '"version":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "0.1.0")"
 ARTIFACT="intentlayer-${OS}-${ARCH}"
-TARGET_DIR="target/release"
+BUILD_TARGET_DIR="${CARGO_TARGET_DIR:-target}"
+RELEASE_DIR="${BUILD_TARGET_DIR}/release"
 DIST_DIR="dist/${VERSION}"
 
 echo "=== Building IntentLayer v${VERSION} (${OS}-${ARCH}) ==="
 
 # Build release binary (locked — no Cargo.lock mutation)
-cargo build --release --locked
+cargo build --release --locked --target-dir "${BUILD_TARGET_DIR}"
+
+# Validate binary exists
+if [[ ! -x "${RELEASE_DIR}/intentlayer" ]]; then
+  echo "Release binary not found: ${RELEASE_DIR}/intentlayer" >&2
+  exit 1
+fi
 
 # Create dist directory
 mkdir -p "${DIST_DIR}"
 
 # Copy binary
-cp "${TARGET_DIR}/intentlayer" "${DIST_DIR}/${ARTIFACT}"
+cp "${RELEASE_DIR}/intentlayer" "${DIST_DIR}/${ARTIFACT}"
 
 # Copy docs
 cp README.md LICENSE CHANGELOG.md "${DIST_DIR}/" 2>/dev/null || true

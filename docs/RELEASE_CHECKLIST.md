@@ -18,7 +18,8 @@ Before tagging a release, verify:
 
 ## Release binary
 - [ ] `cargo build --release`
-- [ ] `./scripts/build-release.sh` (executable, host-aware artifact)
+- [ ] `./scripts/build-release.sh` (executable, host-aware, honors `CARGO_TARGET_DIR`)
+- [ ] `CARGO_TARGET_DIR=/tmp/target-alt ./scripts/build-release.sh` (works with custom target dir)
 - [ ] `./target/release/intentlayer --version`
 - [ ] `./target/release/intentlayer --prompt "fix parser bug" --compiled-only`
 - [ ] `sha256sums.txt` uses artifact-relative filenames (not full dist path)
