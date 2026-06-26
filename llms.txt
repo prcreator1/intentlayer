@@ -1,0 +1,25 @@
+# IntentLayer
+Prompt compiler middleware for coding agents.
+## Important files
+- README.md — overview and CLI usage
+- BUILD_STATUS.md — phase history and test status
+- docs/PRIVATE_DOGFOOD.md — private usage guide
+- docs/DOGFOOD_CHECKLIST.md — dogfood checklist
+- docs/RELEASE_CHECKLIST.md — release checklist
+- src/main.rs — CLI entrypoint
+- src/compiler.rs — compiler output contract
+- src/classifier.rs — mode/category classification
+- src/llm_config.rs — env-only provider config
+- src/openrouter.rs — OpenRouter provider
+- src/groq.rs — Groq provider
+- scripts/build-release.sh — release artifact script
+## Common commands
+cargo test
+cargo clippy --all-targets -- -D warnings
+cargo build --release
+intentlayer --prompt "fix parser bug" --compiled-only
+intentlayer --input request.json --compiled-only
+## Notes
+Use --input for large prompts.
+Use --compiled-only for agent handoff.
+Live providers require feature flags and env-backed API keys.
