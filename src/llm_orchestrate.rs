@@ -134,10 +134,33 @@ pub fn compile_with_llm_orchestration(
     category: &str,
     provider: &dyn LlmProvider,
     envelope_options: &LlmEnvelopeOptions,
+    rules: Option<&crate::rules::RuleSet>,
 ) -> CompileOutput {
+    // 0. Enrich envelope options with rule context from research rules.
+    //    For LLM compilation, prefer rules with mode_recommendation == "llm_compile".
+    //    Never inject a local_compile rule into an llm_compile prompt.
+    //    If no llm_compile rule matches, fall back to universal senior compiler rules.
+    let mut options = envelope_options.clone();
+    if let Some(rules) = rules {
+        if options.rule_context.is_none() {
+            let llm_rule = rules.find_by_category_and_mode(category, "llm_compile");
+            if let Some(rule) = llm_rule {
+                options.rule_context = Some(crate::llm::RuleContext {
+                    rule_id: rule.rule_id.clone(),
+                    category: rule.category.clone(),
+                    risk: rule.risk.clone(),
+                    transformation_principle: rule.transformation_principle.clone(),
+                    compact_rewrite_template: rule.compact_rewrite_template.clone(),
+                    must_preserve: rule.must_preserve.clone(),
+                    must_not_invent: rule.must_not_invent.clone(),
+                    max_expansion_guidance: rule.max_expansion_guidance.clone(),
+                });
+            }
+        }
+    }
+
     // 1. Build envelope
-    let envelope_result =
-        build_llm_prompt_envelope(raw_original_prompt, category, envelope_options);
+    let envelope_result = build_llm_prompt_envelope(raw_original_prompt, category, &options);
 
     match envelope_result {
         // Local secret passthrough — bypasses provider entirely
@@ -359,10 +382,20 @@ mod tests {
         LlmEnvelopeOptions::default()
     }
 
+    /// Convenience wrapper that passes `None` for the optional RuleSet.
+    fn orch(
+        prompt: &str,
+        category: &str,
+        provider: &dyn LlmProvider,
+        opts: &LlmEnvelopeOptions,
+    ) -> CompileOutput {
+        compile_with_llm_orchestration(prompt, category, provider, opts, None)
+    }
+
     #[test]
     fn test_orchestration_uses_strict_json_provider_output() {
         let provider = MockProviderReturnsJson;
-        let output = compile_with_llm_orchestration(
+        let output = orch(
             "design payment system",
             "architecture_planning",
             &provider,
@@ -374,7 +407,7 @@ mod tests {
     #[test]
     fn test_orchestration_uses_fenced_json_provider_output() {
         let provider = MockProviderReturnsFencedJson;
-        let output = compile_with_llm_orchestration(
+        let output = orch(
             "refactor parser",
             "refactor_cleanup",
             &provider,
@@ -386,12 +419,7 @@ mod tests {
     #[test]
     fn test_orchestration_handles_bare_text_with_warning() {
         let provider = MockProviderReturnsBareText;
-        let output = compile_with_llm_orchestration(
-            "fix the thing",
-            "repair_debug",
-            &provider,
-            &default_opts(),
-        );
+        let output = orch("fix the thing", "repair_debug", &provider, &default_opts());
         assert!(output.compiled_prompt.contains("Fix the thing"));
         assert!(
             output
@@ -405,7 +433,7 @@ mod tests {
     #[test]
     fn test_orchestration_falls_back_on_empty_output() {
         let provider = MockProviderReturnsEmpty;
-        let output = compile_with_llm_orchestration(
+        let output = orch(
             "original user prompt",
             "repair_debug",
             &provider,
@@ -420,7 +448,7 @@ mod tests {
     #[test]
     fn test_orchestration_falls_back_on_provider_error() {
         let provider = MockProviderFails;
-        let output = compile_with_llm_orchestration(
+        let output = orch(
             "restructure microservice",
             "architecture_planning",
             &provider,
@@ -438,7 +466,7 @@ mod tests {
     fn test_envelope_warnings_preserved() {
         // Use a prompt with a secret-like value that gets redacted
         let provider = MockProviderReturnsJson;
-        let output = compile_with_llm_orchestration(
+        let output = orch(
             "use sk-redact-me for auth",
             "security_permissions_auth",
             &provider,
@@ -458,8 +486,9 @@ mod tests {
         let provider = MockProviderFails; // would fail if called
         let opts = LlmEnvelopeOptions {
             allow_local_secret_passthrough: true,
+            ..Default::default()
         };
-        let output = compile_with_llm_orchestration(
+        let output = orch(
             "[[INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]\nAdd TOKEN=abc to .env\n[[/INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]",
             "deployment_config_environment",
             &provider,
@@ -481,7 +510,7 @@ mod tests {
     fn test_local_secret_passthrough_only_when_optin_enabled() {
         let provider = MockProviderReturnsJson;
         let opts = LlmEnvelopeOptions::default(); // opt-in disabled
-        let output = compile_with_llm_orchestration(
+        let output = orch(
             "[[INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]\nAdd TOKEN=abc to .env\n[[/INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]",
             "deployment_config_environment",
             &provider,
@@ -497,7 +526,7 @@ mod tests {
     #[test]
     fn test_provider_never_receives_raw_secret_in_normal_path() {
         let provider = MockProviderReturnsJson;
-        let output = compile_with_llm_orchestration(
+        let output = orch(
             "set OPENAI_API_KEY=sk-secret in config",
             "deployment_config_environment",
             &provider,
@@ -522,12 +551,7 @@ mod tests {
     fn test_no_network_api_call_made() {
         // All mock providers are local — no I/O
         let provider = MockProviderReturnsJson;
-        let output = compile_with_llm_orchestration(
-            "test",
-            "architecture_planning",
-            &provider,
-            &default_opts(),
-        );
+        let output = orch("test", "architecture_planning", &provider, &default_opts());
         assert!(!output.compiled_prompt.is_empty());
     }
 
@@ -536,7 +560,7 @@ mod tests {
     #[test]
     fn test_empty_provider_output_does_not_leak_raw_secret_in_fallback() {
         let provider = MockProviderReturnsEmpty;
-        let output = compile_with_llm_orchestration(
+        let output = orch(
             "set OPENAI_API_KEY=sk-secret-123 in config",
             "deployment_config_environment",
             &provider,
@@ -555,7 +579,7 @@ mod tests {
     #[test]
     fn test_provider_failure_fallback_does_not_leak_raw_secret() {
         let provider = MockProviderFails;
-        let output = compile_with_llm_orchestration(
+        let output = orch(
             "set MY_TOKEN=abc123 in .env",
             "deployment_config_environment",
             &provider,
@@ -570,8 +594,9 @@ mod tests {
         let provider = MockProviderReturnsJson;
         let opts = LlmEnvelopeOptions {
             allow_local_secret_passthrough: true,
+            ..Default::default()
         };
-        let output = compile_with_llm_orchestration(
+        let output = orch(
             "[[INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]\nuse TOKEN=mysecret\n[[/INTENTLAYER_LOCAL_SECRET_PASSTHROUGH]]",
             "deployment_config_environment",
             &provider,
@@ -585,7 +610,7 @@ mod tests {
     #[test]
     fn test_provider_invents_stripe_produces_guard_warning() {
         let provider = MockProviderInventsStripe;
-        let output = compile_with_llm_orchestration(
+        let output = orch(
             "add payment",
             "feature_implementation",
             &provider,
@@ -600,7 +625,7 @@ mod tests {
     #[test]
     fn test_normal_non_invented_provider_output_has_no_invention_warning() {
         let provider = MockProviderReturnsJson;
-        let output = compile_with_llm_orchestration(
+        let output = orch(
             "add payment",
             "feature_implementation",
             &provider,
@@ -626,7 +651,7 @@ mod tests {
     #[test]
     fn test_provider_received_json_response_instruction() {
         let provider = MockProviderInspectsRequest::new();
-        let _ = compile_with_llm_orchestration(
+        let _ = orch(
             "design the system",
             "architecture_planning",
             &provider,
@@ -643,7 +668,7 @@ mod tests {
     #[test]
     fn test_provider_received_no_invention_constraints() {
         let provider = MockProviderInspectsRequest::new();
-        let _ = compile_with_llm_orchestration(
+        let _ = orch(
             "add payment",
             "feature_implementation",
             &provider,
@@ -656,7 +681,7 @@ mod tests {
     #[test]
     fn test_provider_received_preservation_constraints() {
         let provider = MockProviderInspectsRequest::new();
-        let _ = compile_with_llm_orchestration(
+        let _ = orch(
             "continue from plan",
             "continuation_previous_plan",
             &provider,
@@ -669,7 +694,7 @@ mod tests {
     #[test]
     fn test_provider_did_not_receive_raw_secret() {
         let provider = MockProviderInspectsRequest::new();
-        let _ = compile_with_llm_orchestration(
+        let _ = orch(
             "use sk-xyz-secret for api",
             "security_permissions_auth",
             &provider,
@@ -686,12 +711,7 @@ mod tests {
     #[test]
     fn test_provider_error_is_populated_on_failure() {
         let provider = MockProviderFails;
-        let output = compile_with_llm_orchestration(
-            "test",
-            "architecture_planning",
-            &provider,
-            &default_opts(),
-        );
+        let output = orch("test", "architecture_planning", &provider, &default_opts());
         assert!(output.provider_error.is_some());
         assert!(output
             .provider_error
@@ -703,12 +723,7 @@ mod tests {
     #[test]
     fn test_provider_error_propagates_clean_message() {
         let provider = MockProviderFails;
-        let output = compile_with_llm_orchestration(
-            "test",
-            "architecture_planning",
-            &provider,
-            &default_opts(),
-        );
+        let output = orch("test", "architecture_planning", &provider, &default_opts());
         assert!(output.provider_error.is_some());
         let err = output.provider_error.as_ref().unwrap();
         assert!(err.contains("LLM compile provider error"));
@@ -762,7 +777,7 @@ mod tests {
                 ))
             }
         }
-        let output = compile_with_llm_orchestration(
+        let output = orch(
             "test",
             "architecture_planning",
             &MockFailsWithKeyUrl,
@@ -787,7 +802,7 @@ mod tests {
     #[test]
     fn test_compiled_only_fallback_produces_handoff_ready_output() {
         let provider = MockProviderFails;
-        let output = compile_with_llm_orchestration(
+        let output = orch(
             "fix the parser bug in src/parser.rs",
             "repair_debug",
             &provider,
@@ -843,7 +858,7 @@ mod tests {
                 ))
             }
         }
-        let output = compile_with_llm_orchestration(
+        let output = orch(
             "fix auth bug",
             "security_permissions_auth",
             &MockFailsSensitive,
@@ -871,6 +886,400 @@ mod tests {
         assert!(
             all_text.contains("[REDACTED_URL]") || err_text.contains("[REDACTED_URL]"),
             "URL must be redacted"
+        );
+    }
+
+    // ── Phase 030A: Research-backed LLM envelope tests ─────────────
+
+    fn load_rules() -> RuleSet {
+        RuleSet::load(Path::new("research/transformation_rules.json"))
+            .expect("Failed to load test rules")
+    }
+
+    #[test]
+    fn test_rule_context_enriches_architecture_prompt() {
+        let rules = load_rules();
+        let provider = MockProviderReturnsJson;
+        let opts = default_opts();
+        let output = compile_with_llm_orchestration(
+            "Design architecture for a notification system.",
+            "architecture_planning",
+            &provider,
+            &opts,
+            Some(&rules),
+        );
+        // The ARCH rule should be found and the output should not be empty
+        assert!(!output.compiled_prompt.is_empty());
+    }
+
+    #[test]
+    fn test_senior_compiler_instruction_is_used() {
+        struct MockCapturesInstruction {
+            captured: std::cell::RefCell<Option<LlmCompileRequest>>,
+        }
+        impl LlmProvider for MockCapturesInstruction {
+            fn compile(&self, request: &LlmCompileRequest) -> Result<LlmCompileResponse, LlmError> {
+                *self.captured.borrow_mut() = Some(request.clone());
+                Ok(LlmCompileResponse {
+                    compiled_prompt: r#"{"compiled_prompt":"dummy","warnings":[]}"#.into(),
+                    warnings: vec![],
+                })
+            }
+        }
+
+        let rules = load_rules();
+        let provider = MockCapturesInstruction {
+            captured: std::cell::RefCell::new(None),
+        };
+        let opts = default_opts();
+        let _ = compile_with_llm_orchestration(
+            "Design architecture for a notification system.",
+            "architecture_planning",
+            &provider,
+            &opts,
+            Some(&rules),
+        );
+
+        let req = provider.captured.borrow();
+        let instruction = &req.as_ref().unwrap().instruction;
+        assert!(
+            instruction.contains("senior prompt-engineering compiler"),
+            "Instruction must include senior compiler role: {:.100}",
+            instruction
+        );
+        assert!(
+            instruction.contains("ARCH-001"),
+            "Instruction must reference the ARCH rule ID"
+        );
+        assert!(
+            instruction.contains("architecture_planning"),
+            "Instruction must include the category"
+        );
+        assert!(
+            instruction.contains("transformation_principle"),
+            "Instruction must include transformation principle heading"
+        );
+    }
+
+    #[test]
+    fn test_instruction_allows_professional_structure_forbids_invention() {
+        struct MockCapturesInstruction {
+            captured: std::cell::RefCell<Option<LlmCompileRequest>>,
+        }
+        impl LlmProvider for MockCapturesInstruction {
+            fn compile(&self, request: &LlmCompileRequest) -> Result<LlmCompileResponse, LlmError> {
+                *self.captured.borrow_mut() = Some(request.clone());
+                Ok(LlmCompileResponse {
+                    compiled_prompt: r#"{"compiled_prompt":"dummy","warnings":[]}"#.into(),
+                    warnings: vec![],
+                })
+            }
+        }
+
+        let rules = load_rules();
+        let provider = MockCapturesInstruction {
+            captured: std::cell::RefCell::new(None),
+        };
+        let opts = default_opts();
+        let _ = compile_with_llm_orchestration(
+            "Design architecture for a notification system.",
+            "architecture_planning",
+            &provider,
+            &opts,
+            Some(&rules),
+        );
+
+        let req = provider.captured.borrow();
+        let inst = &req.as_ref().unwrap().instruction;
+        let lower = inst.to_lowercase();
+
+        // Must allow professional structure
+        assert!(
+            lower.contains("scope") || lower.contains("verification"),
+            "Must allow professional structure dimensions"
+        );
+
+        // Must forbid concrete inventions
+        assert!(
+            lower.contains("must not invent")
+                || lower.contains("cloud providers")
+                || lower.contains("framework"),
+            "Must forbid concrete invention"
+        );
+    }
+
+    #[test]
+    fn test_rule_context_populated_for_matching_category() {
+        let rules = load_rules();
+        let arch_rule = rules.find_by_category("architecture_planning");
+        assert!(arch_rule.is_some(), "ARCH-001 should exist in rules");
+        assert_eq!(
+            arch_rule.unwrap().rule_id,
+            "ARCH-001",
+            "ARCH category should match ARCH-001"
+        );
+
+        // repair category should also have a rule
+        let repair_rule = rules.find_by_category("repair_debug");
+        assert!(repair_rule.is_some(), "REPAIR-001 should exist in rules");
+        assert_eq!(repair_rule.unwrap().rule_id, "REPAIR-001");
+    }
+
+    #[test]
+    fn test_universal_rules_used_when_no_category_rule_matches() {
+        struct MockCapturesInstruction {
+            captured: std::cell::RefCell<Option<LlmCompileRequest>>,
+        }
+        impl LlmProvider for MockCapturesInstruction {
+            fn compile(&self, request: &LlmCompileRequest) -> Result<LlmCompileResponse, LlmError> {
+                *self.captured.borrow_mut() = Some(request.clone());
+                Ok(LlmCompileResponse {
+                    compiled_prompt: r#"{"compiled_prompt":"dummy","warnings":[]}"#.into(),
+                    warnings: vec![],
+                })
+            }
+        }
+
+        let rules = load_rules();
+        let provider = MockCapturesInstruction {
+            captured: std::cell::RefCell::new(None),
+        };
+        let opts = default_opts();
+        let _ = compile_with_llm_orchestration(
+            "some nonexistent category prompt",
+            "nonexistent_category_xyz",
+            &provider,
+            &opts,
+            Some(&rules),
+        );
+
+        let req = provider.captured.borrow();
+        let inst = &req.as_ref().unwrap().instruction;
+        assert!(
+            inst.contains("senior prompt-engineering compiler"),
+            "Universal senior rules must still appear when no category rule matches"
+        );
+        assert!(
+            inst.contains("Universal rules"),
+            "Must include universal rules section when no category match: {:.200}",
+            inst
+        );
+        // Must not contain specific rule data
+        assert!(
+            !inst.contains("ARCH-001"),
+            "Must not contain specific rule when category does not match"
+        );
+    }
+
+    #[test]
+    fn test_mock_provider_can_produce_architecture_output() {
+        struct MockSeniorArchitect;
+        impl LlmProvider for MockSeniorArchitect {
+            fn compile(
+                &self,
+                _request: &LlmCompileRequest,
+            ) -> Result<LlmCompileResponse, LlmError> {
+                Ok(LlmCompileResponse {
+                    compiled_prompt: r#"{"compiled_prompt":"Design a minimal viable notification system. Cover message flow, delivery channels, retry/backoff, idempotency, failure handling, observability, scaling tradeoffs, and safe rollout. Do not assume specific cloud providers, databases, queues, or frameworks.","warnings":[]}"#.into(),
+                    warnings: vec![],
+                })
+            }
+        }
+
+        let output = orch(
+            "Design architecture for a notification system.",
+            "architecture_planning",
+            &MockSeniorArchitect,
+            &default_opts(),
+        );
+
+        let lower = output.compiled_prompt.to_lowercase();
+        // Must include several generic architecture dimensions
+        let dimensions = [
+            "message flow",
+            "delivery",
+            "retry",
+            "idempotenc",
+            "failure",
+            "observab",
+            "scaling",
+            "tradeoff",
+            "rollout",
+        ];
+        let match_count = dimensions.iter().filter(|d| lower.contains(*d)).count();
+        assert!(
+            match_count >= 3,
+            "Must include at least 3 architecture dimensions, got {}. Prompt: {}",
+            match_count,
+            output.compiled_prompt
+        );
+
+        // Must not invent specific vendors/stack
+        let forbidden = [
+            "aws",
+            "redis",
+            "kafka",
+            "postgres",
+            "stripe",
+            "auth0",
+            "kubernetes",
+            "docker",
+        ];
+        for word in &forbidden {
+            assert!(
+                !lower.contains(word),
+                "Must not invent '{}': {}",
+                word,
+                output.compiled_prompt
+            );
+        }
+    }
+
+    #[test]
+    fn test_repair_rule_context_works() {
+        let rules = load_rules();
+        let repair_rule = rules.find_by_category("repair_debug");
+        assert!(repair_rule.is_some());
+        let rule = repair_rule.unwrap();
+        assert!(rule
+            .transformation_principle
+            .to_lowercase()
+            .contains("root"));
+        assert!(rule.must_preserve.contains(&"current context".to_string()));
+    }
+
+    #[test]
+    fn test_existing_secret_redaction_still_works() {
+        let rules = load_rules();
+        let output = compile_with_llm_orchestration(
+            "use sk-abc123xyz for auth",
+            "security_permissions_auth",
+            &MockProviderReturnsJson,
+            &default_opts(),
+            Some(&rules),
+        );
+        assert!(!output.compiled_prompt.contains("abc123xyz"));
+    }
+
+    #[test]
+    fn test_existing_provider_failure_behavior_unchanged() {
+        let rules = load_rules();
+        let output = compile_with_llm_orchestration(
+            "restructure microservice",
+            "architecture_planning",
+            &MockProviderFails,
+            &default_opts(),
+            Some(&rules),
+        );
+        assert!(output.provider_error.is_some());
+        assert!(output
+            .warnings
+            .iter()
+            .any(|w| w.contains("provider failed")));
+    }
+
+    #[test]
+    fn test_llm_mode_does_not_inject_local_compile_rules() {
+        // DEPLOY-001 has mode_recommendation: "local_compile"
+        // It must NOT be injected into an llm_compile prompt for its category.
+        // When no llm_compile rule exists for deployment_config_environment,
+        // universal senior compiler rules should be used instead.
+
+        struct MockCapturesInstruction {
+            captured: std::cell::RefCell<Option<LlmCompileRequest>>,
+        }
+        impl LlmProvider for MockCapturesInstruction {
+            fn compile(&self, request: &LlmCompileRequest) -> Result<LlmCompileResponse, LlmError> {
+                *self.captured.borrow_mut() = Some(request.clone());
+                Ok(LlmCompileResponse {
+                    compiled_prompt: r#"{"compiled_prompt":"dummy","warnings":[]}"#.into(),
+                    warnings: vec![],
+                })
+            }
+        }
+
+        let rules = load_rules();
+
+        // Verify DEPLOY-001 exists and is local_compile
+        let deploy_rule = rules.find_by_category("deployment_config_environment");
+        assert!(deploy_rule.is_some(), "DEPLOY-001 should exist");
+        assert_eq!(
+            deploy_rule.unwrap().mode_recommendation,
+            "local_compile",
+            "DEPLOY-001 must be local_compile for this test to be meaningful"
+        );
+
+        let provider = MockCapturesInstruction {
+            captured: std::cell::RefCell::new(None),
+        };
+        let opts = default_opts();
+        let _ = compile_with_llm_orchestration(
+            "migrate to new server",
+            "deployment_config_environment",
+            &provider,
+            &opts,
+            Some(&rules),
+        );
+
+        let req = provider.captured.borrow();
+        let inst = &req.as_ref().unwrap().instruction;
+
+        // Must NOT inject DEPLOY-001 (local_compile rule) into LLM prompt
+        assert!(
+            !inst.contains("DEPLOY-001"),
+            "Must not inject local_compile rule DEPLOY-001 into llm_compile prompt"
+        );
+
+        // Must use universal senior compiler rules instead
+        assert!(
+            inst.contains("senior prompt-engineering compiler"),
+            "Must use senior compiler persona"
+        );
+        assert!(
+            inst.contains("Universal rules"),
+            "Must use universal rules when no llm_compile rule matches: {:.200}",
+            inst
+        );
+    }
+
+    #[test]
+    fn test_architecture_llm_compile_rule_still_works() {
+        // ARCH-001 has mode_recommendation: "llm_compile" — must still be injected
+
+        struct MockCapturesInstruction {
+            captured: std::cell::RefCell<Option<LlmCompileRequest>>,
+        }
+        impl LlmProvider for MockCapturesInstruction {
+            fn compile(&self, request: &LlmCompileRequest) -> Result<LlmCompileResponse, LlmError> {
+                *self.captured.borrow_mut() = Some(request.clone());
+                Ok(LlmCompileResponse {
+                    compiled_prompt: r#"{"compiled_prompt":"dummy","warnings":[]}"#.into(),
+                    warnings: vec![],
+                })
+            }
+        }
+
+        let rules = load_rules();
+        let provider = MockCapturesInstruction {
+            captured: std::cell::RefCell::new(None),
+        };
+        let opts = default_opts();
+        let _ = compile_with_llm_orchestration(
+            "Design architecture for a notification system.",
+            "architecture_planning",
+            &provider,
+            &opts,
+            Some(&rules),
+        );
+
+        let req = provider.captured.borrow();
+        let inst = &req.as_ref().unwrap().instruction;
+
+        // ARCH-001 is llm_compile — must be present
+        assert!(inst.contains("ARCH-001"), "Must include ARCH-001 rule");
+        assert!(
+            inst.contains("senior prompt-engineering compiler"),
+            "Must use senior compiler persona"
         );
     }
 }
