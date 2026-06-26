@@ -132,8 +132,12 @@ elif command -v intentlayer >/dev/null 2>&1; then
   BIN="$(command -v intentlayer)"
 elif [[ -x "${REPO_ROOT}/target/release/intentlayer" ]]; then
   BIN="${REPO_ROOT}/target/release/intentlayer"
+elif [[ -x "${REPO_ROOT}/target/debug/intentlayer" ]]; then
+  BIN="${REPO_ROOT}/target/debug/intentlayer"
 else
   echo "intentlayer binary not found" >&2
+  echo "Run: cargo build --release" >&2
+  echo "Or set INTENTLAYER_BIN=/path/to/intentlayer" >&2
   exit 1
 fi
 
