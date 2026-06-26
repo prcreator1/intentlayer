@@ -8,7 +8,7 @@ Designed for: Claude Code, opencode, Cursor-style agents, Codex-style agents, He
 
 ## Status
 
-Phase 026 — release readiness (private beta `0.1.0-beta.1`). See `BUILD_STATUS.md`.
+Phase 027 — agent integration and large prompt handling. See `BUILD_STATUS.md`.
 
 ## Quick Start
 
@@ -364,3 +364,29 @@ echo '{"prompt":"fix this bug"}' | intentlayer --compiled-only
 2. Read `mode` — pass_through means the original prompt was already good.
 3. Read `compiled_prompt` — use this as the prompt for the downstream agent.
 4. Check `warnings` — non-empty warnings mean the compiler invented provider names (e.g. "Stripe") that were not in the original prompt. Treat these as errors.
+
+## Agent Integration
+
+IntentLayer is designed for real agent systems. See `docs/AGENT_INTEGRATION.md` for full details.
+
+Supported integration modes:
+- **Hermes** — clone, build with Rust, run `--compiled-only`
+- **OpenCode / opencode-style** — wrap IntentLayer as a preprocessor via `--input` + `--compiled-only`
+- **Generic wrappers** — write prompt to temp JSON, pipe to IntentLayer, pass compiled output downstream
+
+Key usage patterns:
+- Use `--input` for large prompts or pasted Markdown.
+- Use `--compiled-only` for downstream agent handoff.
+- Use stdin JSON for wrapper pipelines.
+- For LLM-assisted compilation, `--max-tokens` controls the provider output budget (default: 800), not input prompt length.
+
+```bash
+# Wrapper pipeline example
+echo '{"prompt":"fix parser bug"}' | intentlayer --compiled-only
+
+# Large prompt via file
+intentlayer --input large-request.json --compiled-only
+
+# Wrapper script
+./scripts/intentlayer-wrapper.sh request.json
+```

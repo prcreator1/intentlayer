@@ -635,3 +635,88 @@ fn test_llm_llm_compile_without_feature_is_handled() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(!stderr.contains("panic"), "Must not panic");
 }
+
+// --- Phase 027: Large input tests ---
+
+fn large_prompt(size: usize) -> String {
+    let mut s = String::with_capacity(size + 64);
+    s.push_str("Fix the following bug: ");
+    // Fill with repeated ASCII text to reach target size
+    while s.len() < size {
+        s.push_str("lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. ");
+    }
+    s.truncate(size);
+    s
+}
+
+fn write_temp_json(filename: &str, prompt: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir();
+    let path = dir.join(filename);
+    let json = serde_json::json!({"prompt": prompt});
+    std::fs::write(&path, serde_json::to_vec(&json).unwrap()).unwrap();
+    path
+}
+
+#[test]
+fn test_large_prompt_via_input_file() {
+    let prompt = large_prompt(30_000);
+    let path = write_temp_json("large_input.json", &prompt);
+    let output = run(&["--input", path.to_str().unwrap(), "--compiled-only"]);
+    assert!(
+        output.status.success(),
+        "Large input via --input should succeed"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.trim().is_empty(),
+        "Compiled output should not be empty"
+    );
+}
+
+#[test]
+fn test_large_prompt_via_stdin_json() {
+    let prompt = large_prompt(25_000);
+    let json = serde_json::json!({"prompt": prompt});
+    let json_str = serde_json::to_string(&json).unwrap();
+    let output = run_with_stdin(&["--compiled-only"], &json_str);
+    assert!(output.status.success(), "Large stdin JSON should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.trim().is_empty(),
+        "Compiled output should not be empty"
+    );
+}
+
+#[test]
+fn test_large_prompt_compiled_only_plain_text() {
+    let prompt = large_prompt(20_000);
+    let path = write_temp_json("large_compiled_only.json", &prompt);
+    let output = run(&["--input", path.to_str().unwrap(), "--compiled-only"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // --compiled-only output should NOT contain JSON braces wrapping metadata
+    assert!(
+        !stdout.trim().starts_with('{'),
+        "Compiled-only output must be plain text, not JSON"
+    );
+}
+
+#[test]
+fn test_large_prompt_slash_pass_through() {
+    // A large prompt that starts with / should pass through exactly
+    let mut prompt = String::from("/review ");
+    prompt.push_str(&large_prompt(20_000));
+    let path = write_temp_json("large_slash.json", &prompt);
+    let output = run(&["--input", path.to_str().unwrap(), "--compiled-only"]);
+    assert!(
+        output.status.success(),
+        "Large slash command should succeed"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout)
+        .trim_end_matches('\n')
+        .to_string();
+    // Because this is a slash command, it should pass through exactly
+    assert_eq!(
+        stdout, prompt,
+        "Large slash command must pass through exactly"
+    );
+}
