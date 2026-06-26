@@ -130,7 +130,7 @@ No second LLM call is made during repair. No network.
 
 The full LLM-assisted compile path is wired as an explicit opt-in. Default
 compile behavior remains deterministic/local. **Provider calls are
-enabled yet.**
+enabled only with --llm, --provider, feature gate, and env-backed API key.**
 
 Orchestration flow:
 1. Build safety envelope (Phase 014) with secret redaction
