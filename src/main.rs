@@ -365,12 +365,26 @@ fn main() {
     }
 
     if args.compiled_only {
-        if !output.warnings.is_empty() {
+        // With --allow-llm-fallback and a provider error, emit fallback prompt
+        // even though warnings carry the provider failure notice
+        let has_provider_failure = output.provider_error.is_some();
+        let allow_fallback = args.allow_llm_fallback && has_provider_failure;
+
+        if !output.warnings.is_empty() && !allow_fallback {
             for w in &output.warnings {
                 eprintln!("{}", w);
             }
             process::exit(1);
         }
+
+        // With fallback allowed, print non-blocking warnings to stderr but
+        // still emit the fallback compiled prompt to stdout
+        if allow_fallback && !output.warnings.is_empty() {
+            for w in &output.warnings {
+                eprintln!("[fallback] {}", w);
+            }
+        }
+
         println!("{}", output.compiled_prompt);
         return;
     }

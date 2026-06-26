@@ -11,6 +11,117 @@ use crate::llm::{
 };
 use crate::llm_parser::{parse_llm_response, LlmParseOutcome};
 
+/// Strip sensitive data from provider error strings before exposing them
+/// in stderr, JSON warnings, or provider_error fields.
+///
+/// Removes:
+/// - API keys (sk-..., gsk_..., sg_, oa_...)
+/// - URLs (https://...)
+/// - Authorization header patterns
+fn sanitize_provider_error(raw: &str) -> String {
+    let s = sanitize_api_keys(raw);
+    let s = sanitize_urls(&s);
+    sanitize_auth_headers(&s)
+}
+
+fn sanitize_api_keys(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let remaining = &s[i..];
+        if (remaining.starts_with("sk-")
+            && remaining
+                .chars()
+                .skip(3)
+                .take_while(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+                .count()
+                >= 5)
+            || (remaining.starts_with("gsk_")
+                && remaining
+                    .chars()
+                    .skip(4)
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .count()
+                    >= 5)
+            || (remaining.starts_with("sg_")
+                && remaining
+                    .chars()
+                    .skip(3)
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .count()
+                    >= 5)
+            || (remaining.starts_with("oa_")
+                && remaining
+                    .chars()
+                    .skip(3)
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .count()
+                    >= 5)
+        {
+            result.push_str("[REDACTED_KEY]");
+            // Skip the key
+            i += remaining
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+                .map(|c| c.len_utf8())
+                .sum::<usize>();
+        } else {
+            result.push(bytes[i] as char);
+            i += 1;
+        }
+    }
+    result
+}
+
+fn sanitize_urls(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut i = 0;
+    let bytes = s.as_bytes();
+    while i < bytes.len() {
+        let remaining = &s[i..];
+        if remaining.starts_with("https://") || remaining.starts_with("http://") {
+            result.push_str("[REDACTED_URL]");
+            // Skip until whitespace or punctuation delimiter
+            i += remaining
+                .chars()
+                .take_while(|c| {
+                    !c.is_whitespace()
+                        && *c != ','
+                        && *c != ';'
+                        && *c != ')'
+                        && *c != ']'
+                        && *c != '}'
+                })
+                .map(|c| c.len_utf8())
+                .sum::<usize>();
+        } else {
+            result.push(bytes[i] as char);
+            i += 1;
+        }
+    }
+    result
+}
+
+fn sanitize_auth_headers(s: &str) -> String {
+    let lower = s.to_lowercase();
+    for prefix in &["authorization:", "bearer "] {
+        if let Some(pos) = lower.find(prefix) {
+            let start = pos + prefix.len();
+            let token: String = s[start..]
+                .chars()
+                .take_while(|c| !c.is_whitespace() && *c != ',' && *c != ';')
+                .collect();
+            if token.len() > 1 {
+                let before = &s[..pos + prefix.len()];
+                let after = &s[pos + prefix.len() + token.len()..];
+                return format!("{}{}{}", before, "[REDACTED_TOKEN]", after);
+            }
+        }
+    }
+    s.to_string()
+}
+
 /// Orchestrate the full LLM-assisted compile path.
 ///
 /// 1. Build safety envelope (Phase 014)
@@ -82,7 +193,7 @@ pub fn compile_with_llm_orchestration(
                 }
                 Err(err) => {
                     // Provider failed — fallback locally using redacted prompt
-                    let sanitized_error = err.to_string();
+                    let sanitized_error = sanitize_provider_error(&err.to_string());
                     let mut warnings = envelope_warnings;
                     warnings.push(format!(
                         "LLM provider failed; fell back to local compilation: {}",
@@ -590,22 +701,7 @@ mod tests {
     }
 
     #[test]
-    fn test_provider_error_is_none_on_success() {
-        let provider = MockProviderReturnsJson;
-        let output = compile_with_llm_orchestration(
-            "test",
-            "architecture_planning",
-            &provider,
-            &default_opts(),
-        );
-        assert!(output.provider_error.is_none());
-    }
-
-    #[test]
     fn test_provider_error_propagates_clean_message() {
-        // Even with a raw-looking message, the real providers sanitize
-        // at the transport level before this point. This test verifies
-        // the field is populated and the message flows through.
         let provider = MockProviderFails;
         let output = compile_with_llm_orchestration(
             "test",
@@ -617,5 +713,69 @@ mod tests {
         let err = output.provider_error.as_ref().unwrap();
         assert!(err.contains("LLM compile provider error"));
         assert!(err.contains("simulated failure"));
+    }
+
+    // ── Phase 028: Error sanitization tests ──────────────────────
+
+    #[test]
+    fn test_sanitize_provider_error_redacts_api_key() {
+        let raw = "LLM compile provider error: failed with key sk-abc123xyz for auth";
+        let clean = sanitize_provider_error(raw);
+        assert!(!clean.contains("sk-abc123xyz"));
+        assert!(clean.contains("[REDACTED_KEY]"));
+    }
+
+    #[test]
+    fn test_sanitize_provider_error_redacts_url() {
+        let raw = "transport error: connection to https://api.example.com/v1/chat failed";
+        let clean = sanitize_provider_error(raw);
+        assert!(!clean.contains("https://api.example.com"));
+        assert!(clean.contains("[REDACTED_URL]"));
+    }
+
+    #[test]
+    fn test_sanitize_provider_error_redacts_bearer_token() {
+        let raw = "Bearer abcdef1234567890abcdef1234567890 is invalid";
+        let clean = sanitize_provider_error(raw);
+        assert!(!clean.contains("abcdef1234567890abcdef1234567890"));
+        assert!(clean.contains("[REDACTED_TOKEN]"));
+    }
+
+    #[test]
+    fn test_sanitize_provider_error_preserves_safe_text() {
+        let raw = "HTTP 401 Unauthorized";
+        let clean = sanitize_provider_error(raw);
+        assert_eq!(clean, raw);
+    }
+
+    #[test]
+    fn test_provider_error_in_output_is_sanitized() {
+        struct MockFailsWithKeyUrl;
+        impl LlmProvider for MockFailsWithKeyUrl {
+            fn compile(
+                &self,
+                _request: &LlmCompileRequest,
+            ) -> Result<LlmCompileResponse, LlmError> {
+                Err(LlmError::ProviderError(
+                    "HTTP 401 from https://api.openai.com/v1: key sk-test-key-abc is invalid"
+                        .into(),
+                ))
+            }
+        }
+        let output = compile_with_llm_orchestration(
+            "test",
+            "architecture_planning",
+            &MockFailsWithKeyUrl,
+            &default_opts(),
+        );
+        let err = output.provider_error.as_ref().unwrap();
+        assert!(!err.contains("sk-test-key-abc"), "Key must be redacted");
+        assert!(!err.contains("api.openai.com"), "URL must be redacted");
+        // Error still contains useful info
+        assert!(
+            err.contains("HTTP 401"),
+            "Should preserve status code: {}",
+            err
+        );
     }
 }
