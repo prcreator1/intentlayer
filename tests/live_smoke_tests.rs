@@ -40,6 +40,31 @@ fn run_intentlayer(args: &[&str]) -> (bool, String, String) {
 
 // ── Live smoke tests (ignored, manual) ──────────────────────────────
 
+fn assert_no_secret_leak(stdout: &str, stderr: &str, api_key: &str) {
+    if !api_key.is_empty() {
+        assert!(!stdout.contains(api_key), "stdout must not contain API key");
+        assert!(!stderr.contains(api_key), "stderr must not contain API key");
+    }
+    let lower_stdout = stdout.to_lowercase();
+    let lower_stderr = stderr.to_lowercase();
+    assert!(
+        !lower_stdout.contains("authorization"),
+        "stdout must not contain Authorization"
+    );
+    assert!(
+        !lower_stdout.contains("bearer"),
+        "stdout must not contain Bearer"
+    );
+    assert!(
+        !lower_stderr.contains("authorization"),
+        "stderr must not contain Authorization"
+    );
+    assert!(
+        !lower_stderr.contains("bearer"),
+        "stderr must not contain Bearer"
+    );
+}
+
 #[test]
 #[ignore = "live smoke test — requires INTENTLAYER_RUN_LIVE_SMOKE=1 + openrouter-http + OPENROUTER_API_KEY"]
 fn smoke_deterministic_bypass() {
@@ -63,6 +88,29 @@ fn smoke_deterministic_bypass() {
         "/help",
         "Slash command must return unchanged"
     );
+    assert_no_secret_leak(&stdout, &_stderr, "");
+}
+
+#[test]
+#[ignore = "live smoke test — requires INTENTLAYER_RUN_LIVE_GROQ_SMOKE=1 + groq-http + GROQ_API_KEY"]
+fn smoke_groq_deterministic_bypass() {
+    if env::var("INTENTLAYER_RUN_LIVE_GROQ_SMOKE").unwrap_or_default() != "1" {
+        println!("SKIPPED: INTENTLAYER_RUN_LIVE_GROQ_SMOKE=1 not set");
+        return;
+    }
+    let (ok, stdout, _stderr) = run_intentlayer(&[
+        "--prompt",
+        "/help",
+        "--llm",
+        "--provider",
+        "groq",
+        "--api-key-env",
+        "GROQ_API_KEY",
+        "--compiled-only",
+    ]);
+    assert!(ok);
+    assert_eq!(stdout.trim(), "/help");
+    assert_no_secret_leak(&stdout, &_stderr, "");
 }
 
 #[test]
@@ -103,18 +151,8 @@ fn smoke_real_llm_compile_call() {
         stdout,
         stderr
     );
-    // No raw API key in output
     let api_key = env::var("OPENROUTER_API_KEY").unwrap_or_default();
-    if !api_key.is_empty() {
-        assert!(
-            !stdout.contains(&api_key),
-            "stdout must not contain API key"
-        );
-        assert!(
-            !stderr.contains(&api_key),
-            "stderr must not contain API key"
-        );
-    }
+    assert_no_secret_leak(&stdout, &stderr, &api_key);
 }
 
 // ── Groq live smoke test ──────────────────────────────────────────
@@ -161,16 +199,7 @@ fn smoke_real_groq_compile_call() {
         stderr
     );
     let api_key = env::var("GROQ_API_KEY").unwrap_or_default();
-    if !api_key.is_empty() {
-        assert!(
-            !stdout.contains(&api_key),
-            "stdout must not contain API key"
-        );
-        assert!(
-            !stderr.contains(&api_key),
-            "stderr must not contain API key"
-        );
-    }
+    assert_no_secret_leak(&stdout, &stderr, &api_key);
 }
 
 // ── Smoke gating tests (always run, no network) ────────────────────
