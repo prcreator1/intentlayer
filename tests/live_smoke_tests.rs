@@ -26,6 +26,19 @@ fn can_run_smoke() -> Result<(), String> {
     Ok(())
 }
 
+fn can_run_groq_smoke() -> Result<(), String> {
+    if env::var("INTENTLAYER_RUN_LIVE_GROQ_SMOKE").unwrap_or_default() != "1" {
+        return Err("INTENTLAYER_RUN_LIVE_GROQ_SMOKE=1 not set".into());
+    }
+    if cfg!(not(feature = "groq-http")) {
+        return Err("groq-http feature not enabled".into());
+    }
+    if env::var("GROQ_API_KEY").unwrap_or_default().is_empty() {
+        return Err("GROQ_API_KEY not set or empty".into());
+    }
+    Ok(())
+}
+
 fn run_intentlayer(args: &[&str]) -> (bool, String, String) {
     let output = Command::new(env!("CARGO_BIN_EXE_intentlayer"))
         .args(args)
@@ -39,6 +52,46 @@ fn run_intentlayer(args: &[&str]) -> (bool, String, String) {
 }
 
 // ── Live smoke tests (ignored, manual) ──────────────────────────────
+
+fn assert_no_secret_leak(stdout: &str, stderr: &str, api_key: &str) {
+    if !api_key.is_empty() {
+        assert!(!stdout.contains(api_key), "stdout must not contain API key");
+        assert!(!stderr.contains(api_key), "stderr must not contain API key");
+    }
+    let lower_stdout = stdout.to_lowercase();
+    let lower_stderr = stderr.to_lowercase();
+    assert!(
+        !lower_stdout.contains("authorization"),
+        "stdout must not contain Authorization"
+    );
+    assert!(
+        !lower_stdout.contains("bearer"),
+        "stdout must not contain Bearer"
+    );
+    assert!(
+        !lower_stderr.contains("authorization"),
+        "stderr must not contain Authorization"
+    );
+    assert!(
+        !lower_stderr.contains("bearer"),
+        "stderr must not contain Bearer"
+    );
+}
+
+fn assert_no_provider_fallback_in_warnings(stdout: &str) {
+    let val: serde_json::Value =
+        serde_json::from_str(stdout).expect("Live smoke stdout must be valid JSON");
+    let compiled = val["compiled_prompt"].as_str().unwrap_or("");
+    assert!(!compiled.is_empty(), "compiled_prompt must be non-empty");
+    let warnings = val["warnings"]
+        .as_array()
+        .expect("warnings must be an array");
+    assert!(
+        warnings.is_empty(),
+        "live provider smoke must have empty warnings: {:?}",
+        warnings
+    );
+}
 
 #[test]
 #[ignore = "live smoke test — requires INTENTLAYER_RUN_LIVE_SMOKE=1 + openrouter-http + OPENROUTER_API_KEY"]
@@ -63,6 +116,29 @@ fn smoke_deterministic_bypass() {
         "/help",
         "Slash command must return unchanged"
     );
+    assert_no_secret_leak(&stdout, &_stderr, "");
+}
+
+#[test]
+#[ignore = "live smoke test — requires INTENTLAYER_RUN_LIVE_GROQ_SMOKE=1 + groq-http + GROQ_API_KEY"]
+fn smoke_groq_deterministic_bypass() {
+    if let Err(r) = can_run_groq_smoke() {
+        println!("SKIPPED: {}", r);
+        return;
+    }
+    let (ok, stdout, _stderr) = run_intentlayer(&[
+        "--prompt",
+        "/help",
+        "--llm",
+        "--provider",
+        "groq",
+        "--api-key-env",
+        "GROQ_API_KEY",
+        "--compiled-only",
+    ]);
+    assert!(ok);
+    assert_eq!(stdout.trim(), "/help");
+    assert_no_secret_leak(&stdout, &_stderr, "");
 }
 
 #[test]
@@ -93,31 +169,68 @@ fn smoke_real_llm_compile_call() {
         "Must have compiled_prompt field"
     );
     assert!(stdout.contains("warnings"), "Must have warnings field");
-    // Prove real provider success — not fallback JSON
-    let lower = stdout.to_lowercase();
-    assert!(
-        !lower.contains("llm provider failed")
-            && !lower.contains("fell back to local compilation")
-            && !lower.contains("fallback"),
-        "Live smoke must prove provider success, not fallback. stdout: {} stderr: {}",
-        stdout,
-        stderr
-    );
-    // No raw API key in output
+    assert_no_provider_fallback_in_warnings(&stdout);
     let api_key = env::var("OPENROUTER_API_KEY").unwrap_or_default();
-    if !api_key.is_empty() {
-        assert!(
-            !stdout.contains(&api_key),
-            "stdout must not contain API key"
-        );
-        assert!(
-            !stderr.contains(&api_key),
-            "stderr must not contain API key"
-        );
+    assert_no_secret_leak(&stdout, &stderr, &api_key);
+}
+
+// ── Groq live smoke test ──────────────────────────────────────────
+
+#[test]
+#[ignore = "live smoke test — requires INTENTLAYER_RUN_LIVE_GROQ_SMOKE=1 + groq-http + GROQ_API_KEY"]
+fn smoke_real_groq_compile_call() {
+    if let Err(r) = can_run_groq_smoke() {
+        println!("SKIPPED: {}", r);
+        return;
     }
+    let prompt = "Design a retry wrapper for failed HTTP requests. Keep it provider-agnostic.";
+    let (ok, stdout, stderr) = run_intentlayer(&[
+        "--prompt",
+        prompt,
+        "--llm",
+        "--provider",
+        "groq",
+        "--api-key-env",
+        "GROQ_API_KEY",
+        "--json",
+    ]);
+    assert!(ok, "Live Groq call must exit 0; stderr: {}", stderr);
+    assert!(
+        stdout.contains("compiled_prompt"),
+        "Must have compiled_prompt"
+    );
+    assert!(stdout.contains("warnings"), "Must have warnings");
+    assert_no_provider_fallback_in_warnings(&stdout);
+    let api_key = env::var("GROQ_API_KEY").unwrap_or_default();
+    assert_no_secret_leak(&stdout, &stderr, &api_key);
 }
 
 // ── Smoke gating tests (always run, no network) ────────────────────
+
+#[test]
+fn test_compiled_prompt_may_contain_fallback_word_if_warnings_empty() {
+    let json = r#"{"compiled_prompt":"Design a fallback strategy","warnings":[]}"#;
+    // Must not panic
+    assert_no_provider_fallback_in_warnings(json);
+}
+
+#[test]
+fn test_warnings_with_fallback_text_fail_validation() {
+    let json = r#"{"compiled_prompt":"ok","warnings":["LLM provider failed"]}"#;
+    let result = std::panic::catch_unwind(|| {
+        assert_no_provider_fallback_in_warnings(json);
+    });
+    assert!(result.is_err(), "Fallback warnings must fail validation");
+}
+
+#[test]
+fn test_warnings_with_repair_text_fail_validation() {
+    let json = r#"{"compiled_prompt":"ok","warnings":["LLM response format was repaired"]}"#;
+    let result = std::panic::catch_unwind(|| {
+        assert_no_provider_fallback_in_warnings(json);
+    });
+    assert!(result.is_err(), "Repair warnings must fail validation");
+}
 
 #[test]
 fn test_smoke_skipped_without_env() {

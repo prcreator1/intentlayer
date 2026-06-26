@@ -69,15 +69,15 @@ When neither `--prompt` nor `--input` is provided, JSON is read from stdin.
 
 ## LLM-Assisted Compile Path
 
-`llm_compile` mode is reserved for complex synthesis/planning prompts
-that need deeper restructuring. Real LLM calls are **not enabled yet**.
-The boundary is defined in `src/llm.rs`.
+`llm_compile` mode is reserved for complex synthesis/planning prompts.
+Default compile remains local/deterministic.
 
 **Current state:**
 - Architecture/planning prompts route to `llm_compile` mode
-- A deterministic local template is used as fallback (stub)
-- No external API calls are made
-- No API keys or secrets are required
+- Live provider calls available only with `--llm` + `--provider` + feature gate + env key
+- OpenRouter and Groq providers validated end-to-end
+- A deterministic local template is used when providers are unavailable
+- No live API calls in normal CI
 
 **Future provider rules (must preserve):**
 - Original context preservation
@@ -88,7 +88,7 @@ The boundary is defined in `src/llm.rs`.
 ## LLM Safety Envelope
 
 This is the safe prompt contract for future LLM-assisted compilation.
-**No real LLM calls are enabled yet.**
+**Real LLM calls require explicit opt-in (--llm, --provider, feature gate, env key).**
 
 The LLM path receives only the latest user-authored prompt plus constraints.
 It is asked only to **rewrite and structure** the prompt — never to execute
@@ -129,8 +129,8 @@ No second LLM call is made during repair. No network.
 ## LLM Compile Orchestration
 
 The full LLM-assisted compile path is wired as an explicit opt-in. Default
-compile behavior remains deterministic/local. **No real provider calls are
-enabled yet.**
+compile behavior remains deterministic/local. **Provider calls are
+enabled only with --llm, --provider, feature gate, and env-backed API key.**
 
 Orchestration flow:
 1. Build safety envelope (Phase 014) with secret redaction
@@ -221,7 +221,7 @@ intentlayer --prompt "design retry wrapper" --llm --provider groq --api-key-env 
 Future LLM providers are configured at runtime. Raw API keys are read from
 environment variables only — config files store env-var names, never secrets.
 
-**Real LLM calls are not enabled yet.** This section documents the config
+**Live LLM calls require explicit opt-in.** This section documents the config
 shape for future use.
 
 **OpenAI-compatible provider (example):**
