@@ -285,7 +285,11 @@ fn main() {
     // Validate LLM args
     let provider_kind = if args.llm {
         if args.provider.is_none() {
-            eprintln!("Error: --llm requires --provider openrouter");
+            let list = intentlayer::llm_provider_registry::supported_provider_list_for_error();
+            eprintln!(
+                "Error: --llm requires --provider <provider>. Supported providers: {}",
+                list
+            );
             process::exit(1);
         }
         let p = args.provider.as_deref().unwrap();
@@ -370,8 +374,15 @@ fn run_llm_openrouter(
     _category: &str,
     #[allow(unused_variables)] _args: &Args,
 ) -> intentlayer::compiler::CompileOutput {
-    eprintln!("Error: OpenRouter HTTP transport is not enabled.");
-    eprintln!("Rebuild with --features openrouter-http.");
+    use intentlayer::llm_provider_registry::ProviderKind;
+    eprintln!(
+        "Error: {} HTTP transport is not enabled.",
+        ProviderKind::OpenRouter.display_name()
+    );
+    eprintln!(
+        "Rebuild with --features {}.",
+        ProviderKind::OpenRouter.feature_name()
+    );
     process::exit(1);
 }
 
@@ -384,16 +395,21 @@ fn run_llm_openrouter(
     use intentlayer::llm::LlmEnvelopeOptions;
     use intentlayer::llm_config::{resolve_from_env, LlmProviderConfig};
     use intentlayer::llm_orchestrate::compile_with_llm_orchestration;
+    use intentlayer::llm_provider_registry::ProviderKind;
     use intentlayer::openrouter::{OpenRouterProvider, ReqwestOpenRouterTransport};
 
+    let kind = ProviderKind::OpenRouter;
     let api_key_env = args.api_key_env.clone().unwrap_or_default();
     let config = LlmProviderConfig {
-        provider: "openai-compatible".into(),
+        provider: kind.name().into(),
         base_url: args
             .base_url
             .clone()
-            .or(Some("https://openrouter.ai/api/v1".into())),
-        model: args.model.clone().unwrap_or_else(|| "gpt-4.1-mini".into()),
+            .or(Some(kind.default_base_url().into())),
+        model: args
+            .model
+            .clone()
+            .unwrap_or_else(|| kind.default_model().into()),
         api_key_env: Some(api_key_env),
         timeout_seconds: args.timeout_seconds.unwrap_or(30),
         max_tokens: args.max_tokens.unwrap_or(800),
@@ -428,8 +444,15 @@ fn run_llm_groq(
     _category: &str,
     #[allow(unused_variables)] _args: &Args,
 ) -> intentlayer::compiler::CompileOutput {
-    eprintln!("Error: Groq HTTP transport is not enabled.");
-    eprintln!("Rebuild with --features groq-http.");
+    use intentlayer::llm_provider_registry::ProviderKind;
+    eprintln!(
+        "Error: {} HTTP transport is not enabled.",
+        ProviderKind::Groq.display_name()
+    );
+    eprintln!(
+        "Rebuild with --features {}.",
+        ProviderKind::Groq.feature_name()
+    );
     process::exit(1);
 }
 
@@ -439,18 +462,20 @@ fn run_llm_groq(prompt: &str, category: &str, args: &Args) -> intentlayer::compi
     use intentlayer::llm::LlmEnvelopeOptions;
     use intentlayer::llm_config::{resolve_from_env, LlmProviderConfig};
     use intentlayer::llm_orchestrate::compile_with_llm_orchestration;
+    use intentlayer::llm_provider_registry::ProviderKind;
 
+    let kind = ProviderKind::Groq;
     let api_key_env = args.api_key_env.clone().unwrap_or_default();
     let config = LlmProviderConfig {
-        provider: "groq".into(),
+        provider: kind.name().into(),
         base_url: args
             .base_url
             .clone()
-            .or(Some("https://api.groq.com/openai/v1".into())),
+            .or(Some(kind.default_base_url().into())),
         model: args
             .model
             .clone()
-            .unwrap_or_else(|| "llama-3.3-70b-versatile".into()),
+            .unwrap_or_else(|| kind.default_model().into()),
         api_key_env: Some(api_key_env),
         timeout_seconds: args.timeout_seconds.unwrap_or(30),
         max_tokens: args.max_tokens.unwrap_or(800),
