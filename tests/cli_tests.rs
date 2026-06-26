@@ -720,3 +720,83 @@ fn test_large_prompt_slash_pass_through() {
         "Large slash command must pass through exactly"
     );
 }
+
+// --- Phase 028: Provider failure visibility tests ---
+
+#[test]
+fn test_help_lists_both_openrouter_and_groq() {
+    let output = run(&["--help"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("openrouter") && stdout.contains("groq"),
+        "--help must list both openrouter and groq providers"
+    );
+}
+
+#[test]
+fn test_help_lists_allow_llm_fallback() {
+    let output = run(&["--help"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("--allow-llm-fallback"),
+        "--help must mention --allow-llm-fallback"
+    );
+}
+
+#[test]
+fn test_llm_without_provider_shows_both_providers() {
+    let output = run(&["--prompt", "fix bug", "--llm", "--json"]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "Should exit non-zero without provider"
+    );
+    assert!(
+        stderr.contains("openrouter") && stderr.contains("groq"),
+        "Error must list both openrouter and groq as supported"
+    );
+}
+
+#[test]
+fn test_unknown_provider_shows_valid_list() {
+    let output = run(&[
+        "--prompt",
+        "fix bug",
+        "--llm",
+        "--provider",
+        "nonexistent",
+        "--json",
+    ]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success(), "Unknown provider should fail");
+    assert!(
+        stderr.contains("openrouter") && stderr.contains("groq"),
+        "Error must include supported providers: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_allow_llm_fallback_flag_accepted() {
+    // Verifies the flag is parsed without error
+    let output = run(&[
+        "--prompt",
+        "fix bug",
+        "--llm",
+        "--provider",
+        "openrouter",
+        "--api-key-env",
+        "FAKE_KEY",
+        "--allow-llm-fallback",
+        "--json",
+    ]);
+    // With --allow-llm-fallback, a provider failure would still fallback
+    // Without the feature, the stub exits 1, but the flag itself shouldn't
+    // cause an "unknown argument" error
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("Unknown argument"),
+        "Should not reject --allow-llm-fallback: {}",
+        stderr
+    );
+}

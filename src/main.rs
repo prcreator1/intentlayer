@@ -29,13 +29,14 @@ Options:
                         Intended for direct handoff to downstream agents.
   --llm                 Enable LLM-assisted compilation (opt-in).
                         Requires --provider openrouter + --api-key-env.
-  --provider <name>     LLM provider: openrouter
+  --provider <name>     LLM provider: openrouter, groq
   --model <name>        Model name override (default: from config)
   --api-key-env <ENV>   Env var name holding API key. Never a raw key.
   --base-url <url>      Optional base URL override
   --timeout-seconds <n> Optional timeout (default: 30)
   --max-tokens <n>      Optional max tokens (default: 800)
   --temperature <n>     Optional temperature (default: 0.1)
+  --allow-llm-fallback  Allow local fallback if provider call fails
   --version             Print version and exit.
   --help                Show this help and exit.
 
@@ -61,6 +62,7 @@ struct Args {
     max_tokens: Option<u32>,
     #[allow(dead_code)]
     temperature: Option<f32>,
+    allow_llm_fallback: bool,
 }
 
 /// Manual CLI parser.  Avoids adding a dependency for v0.1.
@@ -79,6 +81,7 @@ fn parse_args() -> Result<Args, String> {
     let mut timeout_seconds: Option<u64> = None;
     let mut max_tokens: Option<u32> = None;
     let mut temperature: Option<f32> = None;
+    let mut allow_llm_fallback = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -99,6 +102,9 @@ fn parse_args() -> Result<Args, String> {
             }
             "--compiled-only" => {
                 compiled_only = true;
+            }
+            "--allow-llm-fallback" => {
+                allow_llm_fallback = true;
             }
             "--llm" => {
                 llm = true;
@@ -227,6 +233,7 @@ fn parse_args() -> Result<Args, String> {
         timeout_seconds,
         max_tokens,
         temperature,
+        allow_llm_fallback,
     })
 }
 
@@ -348,13 +355,36 @@ fn main() {
         compiler.compile_prompt(&prompt_text)
     };
 
+    // Provider failure visibility: exit non-zero by default when LLM was requested
+    // and the provider failed, unless --allow-llm-fallback is set.
+    if let Some(ref err) = output.provider_error {
+        if !args.allow_llm_fallback {
+            eprintln!("Error: LLM provider failed: {}", err);
+            process::exit(1);
+        }
+    }
+
     if args.compiled_only {
-        if !output.warnings.is_empty() {
+        // With --allow-llm-fallback and a provider error, emit fallback prompt
+        // even though warnings carry the provider failure notice
+        let has_provider_failure = output.provider_error.is_some();
+        let allow_fallback = args.allow_llm_fallback && has_provider_failure;
+
+        if !output.warnings.is_empty() && !allow_fallback {
             for w in &output.warnings {
                 eprintln!("{}", w);
             }
             process::exit(1);
         }
+
+        // With fallback allowed, print non-blocking warnings to stderr but
+        // still emit the fallback compiled prompt to stdout
+        if allow_fallback && !output.warnings.is_empty() {
+            for w in &output.warnings {
+                eprintln!("[fallback] {}", w);
+            }
+        }
+
         println!("{}", output.compiled_prompt);
         return;
     }

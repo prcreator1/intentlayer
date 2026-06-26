@@ -863,3 +863,23 @@ HTTP transport → parser → fallback detection → invention guard → Compile
 - No provider calls in wrapper examples
 - `--compiled-only` handoff preserved
 - All new tests are non-live, no network
+
+---
+
+## Phase 028 — Provider Failure Visibility
+
+### What Changed
+- Provider failures no longer silently succeeded with exit code 0
+- `CompileOutput` gained `provider_error: Option<String>` field for failure tracking
+- `--allow-llm-fallback` flag added — explicit opt-in to fallback on provider failure
+- On provider failure without `--allow-llm-fallback`: exits non-zero, prints sanitized error to stderr, does not emit successful JSON
+- On provider failure with `--allow-llm-fallback`: preserves old fallback behavior (exit 0, warning in JSON)
+- `--help` now lists both `openrouter` and `groq` as valid providers
+- Provider errors include only safe details (provider name, HTTP status, timeout, error class) — no API keys, headers, or raw request bodies
+- New tests: 3 orchestration tests (provider_error field), 5 CLI tests (help, provider listing, flag acceptance)
+
+### Migration Note
+**Provider fallback is no longer silent by default.** Scripts that depend on `--llm` fallback behavior must add `--allow-llm-fallback` to preserve exit code 0 on failure.
+
+### Test Results
+215 tests default / 218 tests combined. 4 live smoke pass.

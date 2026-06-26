@@ -21,6 +21,8 @@ pub struct CompileOutput {
     pub category: String,
     pub changed: bool,
     pub warnings: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_error: Option<String>,
 }
 
 /// The compiler holds a loaded [`RuleSet`] for pattern matching and templates.
@@ -76,6 +78,7 @@ impl Compiler {
                 category: classification.category,
                 changed,
                 warnings: all_warnings,
+                provider_error: None,
             };
         }
 
@@ -86,6 +89,7 @@ impl Compiler {
             category: classification.category,
             changed,
             warnings,
+            provider_error: None,
         }
     }
 
