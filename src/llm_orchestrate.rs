@@ -136,11 +136,15 @@ pub fn compile_with_llm_orchestration(
     envelope_options: &LlmEnvelopeOptions,
     rules: Option<&crate::rules::RuleSet>,
 ) -> CompileOutput {
-    // 0. Enrich envelope options with rule context from research rules
+    // 0. Enrich envelope options with rule context from research rules.
+    //    For LLM compilation, prefer rules with mode_recommendation == "llm_compile".
+    //    Never inject a local_compile rule into an llm_compile prompt.
+    //    If no llm_compile rule matches, fall back to universal senior compiler rules.
     let mut options = envelope_options.clone();
     if let Some(rules) = rules {
         if options.rule_context.is_none() {
-            if let Some(rule) = rules.find_by_category(category) {
+            let llm_rule = rules.find_by_category_and_mode(category, "llm_compile");
+            if let Some(rule) = llm_rule {
                 options.rule_context = Some(crate::llm::RuleContext {
                     rule_id: rule.rule_id.clone(),
                     category: rule.category.clone(),
@@ -1172,5 +1176,110 @@ mod tests {
             .warnings
             .iter()
             .any(|w| w.contains("provider failed")));
+    }
+
+    #[test]
+    fn test_llm_mode_does_not_inject_local_compile_rules() {
+        // DEPLOY-001 has mode_recommendation: "local_compile"
+        // It must NOT be injected into an llm_compile prompt for its category.
+        // When no llm_compile rule exists for deployment_config_environment,
+        // universal senior compiler rules should be used instead.
+
+        struct MockCapturesInstruction {
+            captured: std::cell::RefCell<Option<LlmCompileRequest>>,
+        }
+        impl LlmProvider for MockCapturesInstruction {
+            fn compile(&self, request: &LlmCompileRequest) -> Result<LlmCompileResponse, LlmError> {
+                *self.captured.borrow_mut() = Some(request.clone());
+                Ok(LlmCompileResponse {
+                    compiled_prompt: r#"{"compiled_prompt":"dummy","warnings":[]}"#.into(),
+                    warnings: vec![],
+                })
+            }
+        }
+
+        let rules = load_rules();
+
+        // Verify DEPLOY-001 exists and is local_compile
+        let deploy_rule = rules.find_by_category("deployment_config_environment");
+        assert!(deploy_rule.is_some(), "DEPLOY-001 should exist");
+        assert_eq!(
+            deploy_rule.unwrap().mode_recommendation,
+            "local_compile",
+            "DEPLOY-001 must be local_compile for this test to be meaningful"
+        );
+
+        let provider = MockCapturesInstruction {
+            captured: std::cell::RefCell::new(None),
+        };
+        let opts = default_opts();
+        let _ = compile_with_llm_orchestration(
+            "migrate to new server",
+            "deployment_config_environment",
+            &provider,
+            &opts,
+            Some(&rules),
+        );
+
+        let req = provider.captured.borrow();
+        let inst = &req.as_ref().unwrap().instruction;
+
+        // Must NOT inject DEPLOY-001 (local_compile rule) into LLM prompt
+        assert!(
+            !inst.contains("DEPLOY-001"),
+            "Must not inject local_compile rule DEPLOY-001 into llm_compile prompt"
+        );
+
+        // Must use universal senior compiler rules instead
+        assert!(
+            inst.contains("senior prompt-engineering compiler"),
+            "Must use senior compiler persona"
+        );
+        assert!(
+            inst.contains("Universal rules"),
+            "Must use universal rules when no llm_compile rule matches: {:.200}",
+            inst
+        );
+    }
+
+    #[test]
+    fn test_architecture_llm_compile_rule_still_works() {
+        // ARCH-001 has mode_recommendation: "llm_compile" — must still be injected
+
+        struct MockCapturesInstruction {
+            captured: std::cell::RefCell<Option<LlmCompileRequest>>,
+        }
+        impl LlmProvider for MockCapturesInstruction {
+            fn compile(&self, request: &LlmCompileRequest) -> Result<LlmCompileResponse, LlmError> {
+                *self.captured.borrow_mut() = Some(request.clone());
+                Ok(LlmCompileResponse {
+                    compiled_prompt: r#"{"compiled_prompt":"dummy","warnings":[]}"#.into(),
+                    warnings: vec![],
+                })
+            }
+        }
+
+        let rules = load_rules();
+        let provider = MockCapturesInstruction {
+            captured: std::cell::RefCell::new(None),
+        };
+        let opts = default_opts();
+        let _ = compile_with_llm_orchestration(
+            "Design architecture for a notification system.",
+            "architecture_planning",
+            &provider,
+            &opts,
+            Some(&rules),
+        );
+
+        let req = provider.captured.borrow();
+        let inst = &req.as_ref().unwrap().instruction;
+
+        // ARCH-001 is llm_compile — must be present
+        assert!(inst.contains("ARCH-001"), "Must include ARCH-001 rule");
+        assert!(
+            inst.contains("senior prompt-engineering compiler"),
+            "Must use senior compiler persona"
+        );
     }
 }
