@@ -4,6 +4,7 @@ target/
 .env
 .env.*
 !.env.example
+!.env.local.example
 *.env
 *.env.local
 

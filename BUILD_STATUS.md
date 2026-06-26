@@ -904,3 +904,36 @@ No code change required — the classifier already returns `Mode::PassThrough` f
 
 ### Test Results
 228 tests default / 231 tests combined. 4 live smoke pass.
+
+---
+
+## Phase 031 — Env-File Support for Provider Keys
+
+### What Changed
+- `src/env_file.rs` — minimal dotenv parser (no deps): `KEY=VALUE`, comments, blank lines, duplicate detection
+- `load_env_file_fill_missing()` fills only absent process env vars (process env always wins)
+- `--env-file <path>` CLI flag added — loads env file before provider config resolution
+- Default auto-load: if `.env.local` exists in cwd, it is loaded automatically (missing is not an error)
+- `.env.local.example` added with safe placeholder values
+- `.gitignore` updated: `!.env.local.example` exception
+
+### Precedence
+1. Existing process environment wins
+2. Env-file values fill missing variables only
+3. Env-file must not override already-set env vars
+
+### Safety
+- No raw API key CLI arg (--api-key-env still required)
+- Env-file values never appear in stdout/stderr
+- `.env.local` is gitignored
+- Example file has only placeholder values
+- Provider failure/no-fallback behavior from PR28 unchanged
+- Slash pass-through from PR29 unchanged
+- Senior LLM envelope from PR30 unchanged
+
+### Tests Added
+- Env file parser: KEY=VALUE, comments, whitespace, equals-in-value, duplicates, missing file, malformed lines, no key leak in errors
+- CLI: explicit --env-file missing path fails, --help mentions --env-file, default missing is not error, values never in output, env overrides file, file loads when absent
+
+### Test Results
+256 tests default / 259 tests combined. 4 live smoke pass.

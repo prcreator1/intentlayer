@@ -37,6 +37,7 @@ Options:
   --max-tokens <n>      Optional max tokens (default: 800)
   --temperature <n>     Optional temperature (default: 0.1)
   --allow-llm-fallback  Allow local fallback if provider call fails
+  --env-file <path>     Load env vars from file (default: auto-load .env.local if present)
   --version             Print version and exit.
   --help                Show this help and exit.
 
@@ -47,6 +48,7 @@ struct Args {
     prompt: Option<String>,
     input: Option<PathBuf>,
     rules_path: PathBuf,
+    env_file: Option<PathBuf>,
     json: bool,
     compiled_only: bool,
     llm: bool,
@@ -82,6 +84,7 @@ fn parse_args() -> Result<Args, String> {
     let mut max_tokens: Option<u32> = None;
     let mut temperature: Option<f32> = None;
     let mut allow_llm_fallback = false;
+    let mut env_file: Option<PathBuf> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -105,6 +108,15 @@ fn parse_args() -> Result<Args, String> {
             }
             "--allow-llm-fallback" => {
                 allow_llm_fallback = true;
+            }
+            "--env-file" => {
+                i += 1;
+                if i >= args.len() || args[i].starts_with('-') {
+                    return Err(
+                        "Missing value for --env-file. Expected: --env-file .env.local".into(),
+                    );
+                }
+                env_file = Some(PathBuf::from(args[i].clone()));
             }
             "--llm" => {
                 llm = true;
@@ -223,6 +235,7 @@ fn parse_args() -> Result<Args, String> {
         prompt,
         input,
         rules_path,
+        env_file,
         json,
         compiled_only,
         llm,
@@ -288,6 +301,36 @@ fn main() {
             process::exit(1);
         }
     };
+
+    // Load env-file: explicit path required, or auto-load .env.local from cwd
+    let env_file_path = match &args.env_file {
+        Some(explicit) => explicit.clone(),
+        None => {
+            let default_path = PathBuf::from(".env.local");
+            // Only auto-load if the file exists; missing default is not an error
+            if default_path.exists() {
+                default_path
+            } else {
+                PathBuf::new() // empty — skip loading
+            }
+        }
+    };
+
+    if !env_file_path.as_os_str().is_empty() {
+        if !env_file_path.exists() && args.env_file.is_some() {
+            eprintln!(
+                "Error: env file '{}' does not exist",
+                env_file_path.display()
+            );
+            process::exit(1);
+        }
+        if env_file_path.exists() {
+            if let Err(e) = intentlayer::env_file::load_env_file_fill_missing(&env_file_path) {
+                eprintln!("Error: {}", e);
+                process::exit(1);
+            }
+        }
+    }
 
     // Validate LLM args
     let provider_kind = if args.llm {
