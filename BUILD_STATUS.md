@@ -808,3 +808,32 @@ HTTP transport → parser → fallback detection → invention guard → Compile
 - OpenRouter live command documented
 - Groq live command documented
 - No secrets committed
+
+---
+
+## Phase 026 — Release Readiness
+
+### What Changed
+- LICENSE added (MIT)
+- CHANGELOG added (initial `0.1.0-beta.1` changelog)
+- `docs/RELEASE_CHECKLIST.md` added (pre-release verification with checksum items)
+- `scripts/build-release.sh` added (locked metadata/build, host-aware artifact naming, artifact-relative checksums + inline verification, executable `100755`)
+- Cargo.toml updated (`repository`, `readme`, `0.1.0-beta.1`)
+- Cargo.lock updated for `0.1.0-beta.1` version bump
+- README stale status wording fixed (Phase 005 → Phase 026, "stub in v0.1" removed)
+- Release artifact naming made host-aware (OS/arch derived at build time)
+- Release script uses `--locked` for both `cargo metadata` and `cargo build --release`
+- Checksums record artifact basename only (not full dist path); verified inline (sha256sum or shasum -a 256 fallback)
+- `AGENTS.md` — original product laws restored (Core Law, Compiler Modes, Context-Preservation, No-Invention, Compactness, 16 Never-Do Rules) + bootstrap sections appended
+- `llms.txt` added (LLM repo map)
+- Version bumped to `0.1.0-beta.1` (private beta)
+
+### Test Results
+203 tests default / 209 combined. 4 live smoke pass.
+
+### Release Readiness
+- Release binary builds
+- `--version` works
+- `--compiled-only` works
+- No default network calls
+- No secrets committed

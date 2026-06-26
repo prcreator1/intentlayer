@@ -1,9 +1,11 @@
 [package]
 name = "intentlayer"
-version = "0.1.0"
+version = "0.1.0-beta.1"
 edition = "2021"
 description = "A prompt-only compiler for coding agents"
 license = "MIT"
+repository = "https://github.com/prcreator1/intentlayer"
+readme = "README.md"
 
 [lib]
 name = "intentlayer"
