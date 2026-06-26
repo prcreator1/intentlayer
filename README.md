@@ -195,7 +195,9 @@ INTENTLAYER_RUN_LIVE_SMOKE=1 cargo test --features openrouter-http -- --ignored
 
 ## Dogfood / Install
 
-See [Private Dogfood Guide](docs/PRIVATE_DOGFOOD.md) and [Checklist](docs/DOGFOOD_CHECKLIST.md).
+- `rust-toolchain.toml` pins the stable Rust toolchain.
+- See [Private Dogfood Guide](docs/PRIVATE_DOGFOOD.md) and [Checklist](docs/DOGFOOD_CHECKLIST.md).
+- `AGENTS.md` contains coding-agent instructions; `llms.txt` provides an LLM repo map.
 
 ## Feature-Gated OpenRouter HTTP Transport
 
@@ -281,7 +283,7 @@ to transform messy prompts before execution.
 ### Future GitHub Releases
 
 Release artifacts follow the pattern `intentlayer-{os}-{arch}` and are
-built via `scripts/build-release.sh`. The script detects host OS/arch at
+built via `./scripts/build-release.sh`. The script detects host OS/arch at
 build time and names the artifact accordingly:
 
 - `intentlayer-linux-x86_64`
