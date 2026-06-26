@@ -120,9 +120,24 @@ user prompt
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
 INPUT_FILE="${1:?usage: intentlayer-agent-wrapper <request.json>}"
 
-COMPILED_PROMPT="$(intentlayer --input "$INPUT_FILE" --compiled-only)"
+# Binary resolution: INTENTLAYER_BIN → PATH → target/release → target/debug
+if [[ -n "${INTENTLAYER_BIN:-}" ]]; then
+  BIN="${INTENTLAYER_BIN}"
+elif command -v intentlayer >/dev/null 2>&1; then
+  BIN="$(command -v intentlayer)"
+elif [[ -x "${REPO_ROOT}/target/release/intentlayer" ]]; then
+  BIN="${REPO_ROOT}/target/release/intentlayer"
+else
+  echo "intentlayer binary not found" >&2
+  exit 1
+fi
+
+COMPILED_PROMPT="$("${BIN}" --input "$INPUT_FILE" --compiled-only)"
 
 printf '%s\n' "$COMPILED_PROMPT"
 ```
@@ -133,6 +148,16 @@ Usage:
 echo '{"prompt":"fix parser bug"}' > /tmp/request.json
 ./scripts/intentlayer-wrapper.sh /tmp/request.json
 ```
+
+The wrapper resolves the binary in order:
+1. `INTENTLAYER_BIN` env var (if set)
+2. `intentlayer` on PATH
+3. `./target/release/intentlayer` (repo-local release build)
+4. `./target/debug/intentlayer` (repo-local debug build)
+5. Fails with a clear error message
+
+This means the wrapper works immediately after `cargo build --release` from
+a source checkout, without requiring `intentlayer` on PATH.
 
 ### Pipeline pattern
 

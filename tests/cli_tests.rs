@@ -711,10 +711,12 @@ fn test_large_prompt_slash_pass_through() {
         output.status.success(),
         "Large slash command should succeed"
     );
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    // Because this is a slash command, it should pass through (compiled == original)
-    assert!(
-        !stdout.is_empty(),
-        "Pass-through output should not be empty"
+    let stdout = String::from_utf8_lossy(&output.stdout)
+        .trim_end_matches('\n')
+        .to_string();
+    // Because this is a slash command, it should pass through exactly
+    assert_eq!(
+        stdout, prompt,
+        "Large slash command must pass through exactly"
     );
 }

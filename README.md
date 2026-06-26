@@ -378,7 +378,7 @@ Key usage patterns:
 - Use `--input` for large prompts or pasted Markdown.
 - Use `--compiled-only` for downstream agent handoff.
 - Use stdin JSON for wrapper pipelines.
-- `--max-tokens` controls the provider output budget (default: 800), not input prompt length.
+- For LLM-assisted compilation, `--max-tokens` controls the provider output budget (default: 800), not input prompt length.
 
 ```bash
 # Wrapper pipeline example
