@@ -785,3 +785,26 @@ HTTP transport → parser → fallback detection → invention guard → Compile
 ### Test Results
 **203 tests (default) / 209 tests (combined features)**
 4 live smoke tests pass with real keys. All non-ignored pass.
+
+---
+
+## Phase 025 — Private Dogfood and Install/Usage Readiness
+
+### What Changed
+- `docs/PRIVATE_DOGFOOD.md` — install from source, local compile, live provider
+  usage, downstream handoff, troubleshooting
+- `docs/DOGFOOD_CHECKLIST.md` — local, OpenRouter, Groq verification checklists
+- README: Dogfood / Install section linking to docs
+
+### Test Results
+**203 tests (default) / 209 tests (combined features)**
+4 live smoke tests pass. All non-ignored pass.
+
+### Dogfood verified
+- Clean checkout builds
+- Release binary works
+- Local deterministic mode works
+- `--compiled-only` works
+- OpenRouter live command documented
+- Groq live command documented
+- No secrets committed
