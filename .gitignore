@@ -1,1 +1,17 @@
 target/
+
+# Local environment / secrets
+.env
+.env.*
+!.env.example
+*.env
+*.env.local
+
+# Local dogfood outputs / logs
+dogfood-output*
+dogfood-*.json
+dogfood-*.log
+*.log
+
+# Local shell/tool caches
+.direnv/
