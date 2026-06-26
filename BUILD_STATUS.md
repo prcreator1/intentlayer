@@ -883,3 +883,24 @@ HTTP transport → parser → fallback detection → invention guard → Compile
 
 ### Test Results
 215 tests default / 218 tests combined. 4 live smoke pass.
+
+---
+
+## Phase 029 — Direct Slash Pass-Through
+
+### Bug Context
+Windows sandbox retest flagged that slash commands were potentially rewritten instead of passed through. Investigation confirmed the `classify()` function already handles `trimmed.starts_with('/')` → `PassThrough` at the first priority check. The behavior was correct on clean Linux/aarch64 builds for all input methods (`--prompt`, `--input`, stdin).
+
+### Fix
+No code change required — the classifier already returns `Mode::PassThrough` for slash commands at the first priority check (`classifier.rs:616`). Added 7 defense-in-depth regression tests covering:
+
+- `--compiled-only` prints exact slash command
+- `--json` has `compiled_prompt == original_prompt`, `mode == pass_through`, `changed == false`, empty warnings
+- Multiple slash commands (`/fix`, `/pr`, `/clear`, `/model`)
+- Leading-whitespace slash commands preserve original whitespace
+- Non-slash prompts still compile correctly
+- Slash via `--input` file passes through
+- Slash via stdin passes through
+
+### Test Results
+228 tests default / 231 tests combined. 4 live smoke pass.
