@@ -37,6 +37,7 @@ pub fn compile_with_llm_orchestration(
             category: category.to_string(),
             changed: true,
             warnings,
+            provider_error: None,
         },
 
         // Normal envelope — call provider with full envelope request
@@ -76,12 +77,17 @@ pub fn compile_with_llm_orchestration(
                         category: category.to_string(),
                         changed: true,
                         warnings: all_warnings,
+                        provider_error: None,
                     }
                 }
-                Err(_err) => {
+                Err(err) => {
                     // Provider failed — fallback locally using redacted prompt
+                    let sanitized_error = err.to_string();
                     let mut warnings = envelope_warnings;
-                    warnings.push("LLM provider failed; fell back to local compilation".into());
+                    warnings.push(format!(
+                        "LLM provider failed; fell back to local compilation: {}",
+                        sanitized_error
+                    ));
                     CompileOutput {
                         original_prompt: raw_original_prompt.to_string(),
                         compiled_prompt: format!(
@@ -92,6 +98,7 @@ pub fn compile_with_llm_orchestration(
                         category: category.to_string(),
                         changed: true,
                         warnings,
+                        provider_error: Some(sanitized_error),
                     }
                 }
             }
@@ -313,6 +320,7 @@ mod tests {
             .iter()
             .any(|w| w.contains("provider failed")));
         assert!(output.compiled_prompt.contains("restructure microservice"));
+        assert!(output.provider_error.is_some());
     }
 
     #[test]
@@ -562,5 +570,52 @@ mod tests {
             !prompt.contains("sk-xyz-secret"),
             "Provider must not receive raw secret"
         );
+    }
+
+    #[test]
+    fn test_provider_error_is_populated_on_failure() {
+        let provider = MockProviderFails;
+        let output = compile_with_llm_orchestration(
+            "test",
+            "architecture_planning",
+            &provider,
+            &default_opts(),
+        );
+        assert!(output.provider_error.is_some());
+        assert!(output
+            .provider_error
+            .as_ref()
+            .unwrap()
+            .contains("simulated failure"));
+    }
+
+    #[test]
+    fn test_provider_error_is_none_on_success() {
+        let provider = MockProviderReturnsJson;
+        let output = compile_with_llm_orchestration(
+            "test",
+            "architecture_planning",
+            &provider,
+            &default_opts(),
+        );
+        assert!(output.provider_error.is_none());
+    }
+
+    #[test]
+    fn test_provider_error_propagates_clean_message() {
+        // Even with a raw-looking message, the real providers sanitize
+        // at the transport level before this point. This test verifies
+        // the field is populated and the message flows through.
+        let provider = MockProviderFails;
+        let output = compile_with_llm_orchestration(
+            "test",
+            "architecture_planning",
+            &provider,
+            &default_opts(),
+        );
+        assert!(output.provider_error.is_some());
+        let err = output.provider_error.as_ref().unwrap();
+        assert!(err.contains("LLM compile provider error"));
+        assert!(err.contains("simulated failure"));
     }
 }
