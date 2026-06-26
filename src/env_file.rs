@@ -50,8 +50,22 @@ pub fn parse_env_file(path: &Path) -> Result<HashMap<String, String>, String> {
                 path.display()
             ));
         }
+        if key.contains('\0') {
+            return Err(format!(
+                "Malformed line {} in env file '{}': key contains NUL byte",
+                ln,
+                path.display()
+            ));
+        }
 
         let value = trimmed[eq_pos + 1..].trim().to_string();
+        if value.contains('\0') {
+            return Err(format!(
+                "Malformed line {} in env file '{}': value contains NUL byte",
+                ln,
+                path.display()
+            ));
+        }
 
         map.insert(key, value);
     }
@@ -185,5 +199,63 @@ mod tests {
         let result = parse_env_file(&path);
         let err = result.unwrap_err();
         assert!(!err.contains("sk-secret-key"));
+    }
+
+    fn write_temp_bytes(bytes: &[u8], name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir();
+        let path = dir.join(name);
+        std::fs::write(&path, bytes).unwrap();
+        path
+    }
+
+    #[test]
+    fn test_parse_rejects_nul_in_key() {
+        // KEY\0=VALUE — embedded NUL in key
+        let path = write_temp_bytes(b"KEY\0X=value\n", "env_nul_key.env");
+        let result = parse_env_file(&path);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("key contains NUL byte"));
+    }
+
+    #[test]
+    fn test_parse_rejects_nul_in_value() {
+        // KEY=val\0ue — embedded NUL in value
+        let path = write_temp_bytes(b"KEY=val\0ue\n", "env_nul_val.env");
+        let result = parse_env_file(&path);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("value contains NUL byte"));
+    }
+
+    #[test]
+    fn test_nul_error_for_value_does_not_leak_secret() {
+        // KEY=sk-secret-before-nul\0after — NUL in secret-like value
+        let path = write_temp_bytes(b"KEY=sk-secret-before-nul\0after\n", "env_nul_secret.env");
+        let result = parse_env_file(&path);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            !err.contains("sk-secret-before-nul"),
+            "Error must not contain secret: {}",
+            err
+        );
+        assert!(
+            !err.contains("after"),
+            "Error must not contain post-NUL value: {}",
+            err
+        );
+        assert!(
+            !err.contains("sk"),
+            "Error must not contain key pattern: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_load_env_file_does_not_panic_on_nul_value() {
+        let path = write_temp_bytes(b"KEY=val\0ue\n", "env_nul_no_panic.env");
+        let result = load_env_file_fill_missing(&path);
+        assert!(result.is_err());
     }
 }
