@@ -837,3 +837,29 @@ HTTP transport → parser → fallback detection → invention guard → Compile
 - `--compiled-only` works
 - No default network calls
 - No secrets committed
+
+---
+
+## Phase 027 — Agent Integration and Large Prompt Handling
+
+### What Changed
+- `docs/AGENT_INTEGRATION.md` added — Hermes, OpenCode, large prompt, max-token guidance
+- `scripts/intentlayer-wrapper.sh` added — executable wrapper script with exit-code handling
+- Large input tests added (4 tests, 20K-30K char prompts) covering:
+  - `--input` file with large prompt
+  - stdin JSON with large prompt
+  - `--compiled-only` plain text for large prompt
+  - Slash pass-through with large prompt
+- README: Agent Integration section linking to `docs/AGENT_INTEGRATION.md`
+- Max token behavior documented (default 800, controls provider output budget not input length)
+
+### Test Results
+211 tests default / 214 tests combined. 4 live smoke pass.
+
+### Safety
+- No default network calls
+- No raw keys
+- No live CI calls
+- No provider calls in wrapper examples
+- `--compiled-only` handoff preserved
+- All new tests are non-live, no network
