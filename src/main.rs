@@ -283,20 +283,22 @@ fn main() {
     };
 
     // Validate LLM args
-    if args.llm {
+    let provider_kind = if args.llm {
         if args.provider.is_none() {
             eprintln!("Error: --llm requires --provider openrouter");
             process::exit(1);
         }
         let p = args.provider.as_deref().unwrap();
-        if p != "openrouter" && p != "groq" {
-            eprintln!(
-                "Error: unsupported LLM provider '{}'. Supported providers: openrouter, groq",
-                p
-            );
-            process::exit(1);
+        match intentlayer::llm_provider_registry::parse_provider(p) {
+            Ok(kind) => Some(kind),
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                process::exit(1);
+            }
         }
-    }
+    } else {
+        None
+    };
 
     let compiler = match load_compiler(&args.rules_path) {
         Ok(c) => c,
@@ -314,16 +316,13 @@ fn main() {
         }
     };
 
-    // Classification — must run before deciding LLM path
     let classification = {
         let rules = &compiler.rules;
         intentlayer::classifier::classify(&prompt_text, rules)
     };
 
-    let llm_eligible = args.llm
-        && (args.provider.as_deref() == Some("openrouter")
-            || args.provider.as_deref() == Some("groq"))
-        && classification.mode == intentlayer::classifier::Mode::LlmCompile;
+    let llm_eligible =
+        provider_kind.is_some() && classification.mode == intentlayer::classifier::Mode::LlmCompile;
 
     // Only require API key when an actual LLM call will be made
     if llm_eligible && args.api_key_env.is_none() {
@@ -332,9 +331,13 @@ fn main() {
     }
 
     let output = if llm_eligible {
-        match args.provider.as_deref() {
-            Some("openrouter") => run_llm_openrouter(&prompt_text, &classification.category, &args),
-            Some("groq") => run_llm_groq(&prompt_text, &classification.category, &args),
+        match provider_kind {
+            Some(intentlayer::llm_provider_registry::ProviderKind::OpenRouter) => {
+                run_llm_openrouter(&prompt_text, &classification.category, &args)
+            }
+            Some(intentlayer::llm_provider_registry::ProviderKind::Groq) => {
+                run_llm_groq(&prompt_text, &classification.category, &args)
+            }
             _ => compiler.compile_prompt(&prompt_text),
         }
     } else {
