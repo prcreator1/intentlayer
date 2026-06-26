@@ -65,6 +65,37 @@ fn assert_no_secret_leak(stdout: &str, stderr: &str, api_key: &str) {
     );
 }
 
+fn assert_no_provider_fallback_in_warnings(stdout: &str) {
+    let val: serde_json::Value =
+        serde_json::from_str(stdout).expect("Live smoke stdout must be valid JSON");
+    let compiled = val["compiled_prompt"].as_str().unwrap_or("");
+    assert!(!compiled.is_empty(), "compiled_prompt must be non-empty");
+    let warnings = val["warnings"]
+        .as_array()
+        .expect("warnings must be an array");
+    let ward_lower: Vec<String> = warnings
+        .iter()
+        .map(|w| w.as_str().unwrap_or("").to_lowercase())
+        .collect();
+    for w in &ward_lower {
+        assert!(
+            !w.contains("llm provider failed"),
+            "warnings must not contain provider failure: {}",
+            w
+        );
+        assert!(
+            !w.contains("fell back to local compilation"),
+            "warnings must not contain fallback: {}",
+            w
+        );
+        assert!(
+            !w.contains("provider failed"),
+            "warnings must not contain provider failure: {}",
+            w
+        );
+    }
+}
+
 #[test]
 #[ignore = "live smoke test — requires INTENTLAYER_RUN_LIVE_SMOKE=1 + openrouter-http + OPENROUTER_API_KEY"]
 fn smoke_deterministic_bypass() {
@@ -141,16 +172,7 @@ fn smoke_real_llm_compile_call() {
         "Must have compiled_prompt field"
     );
     assert!(stdout.contains("warnings"), "Must have warnings field");
-    // Prove real provider success — not fallback JSON
-    let lower = stdout.to_lowercase();
-    assert!(
-        !lower.contains("llm provider failed")
-            && !lower.contains("fell back to local compilation")
-            && !lower.contains("fallback"),
-        "Live smoke must prove provider success, not fallback. stdout: {} stderr: {}",
-        stdout,
-        stderr
-    );
+    assert_no_provider_fallback_in_warnings(&stdout);
     let api_key = env::var("OPENROUTER_API_KEY").unwrap_or_default();
     assert_no_secret_leak(&stdout, &stderr, &api_key);
 }
@@ -189,15 +211,7 @@ fn smoke_real_groq_compile_call() {
         "Must have compiled_prompt"
     );
     assert!(stdout.contains("warnings"), "Must have warnings");
-    let lower = stdout.to_lowercase();
-    assert!(
-        !lower.contains("llm provider failed")
-            && !lower.contains("fell back to local compilation")
-            && !lower.contains("fallback"),
-        "Live Groq must prove success, not fallback. stdout: {} stderr: {}",
-        stdout,
-        stderr
-    );
+    assert_no_provider_fallback_in_warnings(&stdout);
     let api_key = env::var("GROQ_API_KEY").unwrap_or_default();
     assert_no_secret_leak(&stdout, &stderr, &api_key);
 }
