@@ -73,27 +73,11 @@ fn assert_no_provider_fallback_in_warnings(stdout: &str) {
     let warnings = val["warnings"]
         .as_array()
         .expect("warnings must be an array");
-    let ward_lower: Vec<String> = warnings
-        .iter()
-        .map(|w| w.as_str().unwrap_or("").to_lowercase())
-        .collect();
-    for w in &ward_lower {
-        assert!(
-            !w.contains("llm provider failed"),
-            "warnings must not contain provider failure: {}",
-            w
-        );
-        assert!(
-            !w.contains("fell back to local compilation"),
-            "warnings must not contain fallback: {}",
-            w
-        );
-        assert!(
-            !w.contains("provider failed"),
-            "warnings must not contain provider failure: {}",
-            w
-        );
-    }
+    assert!(
+        warnings.is_empty(),
+        "live provider smoke must have empty warnings: {:?}",
+        warnings
+    );
 }
 
 #[test]
@@ -217,6 +201,31 @@ fn smoke_real_groq_compile_call() {
 }
 
 // ── Smoke gating tests (always run, no network) ────────────────────
+
+#[test]
+fn test_compiled_prompt_may_contain_fallback_word_if_warnings_empty() {
+    let json = r#"{"compiled_prompt":"Design a fallback strategy","warnings":[]}"#;
+    // Must not panic
+    assert_no_provider_fallback_in_warnings(json);
+}
+
+#[test]
+fn test_warnings_with_fallback_text_fail_validation() {
+    let json = r#"{"compiled_prompt":"ok","warnings":["LLM provider failed"]}"#;
+    let result = std::panic::catch_unwind(|| {
+        assert_no_provider_fallback_in_warnings(json);
+    });
+    assert!(result.is_err(), "Fallback warnings must fail validation");
+}
+
+#[test]
+fn test_warnings_with_repair_text_fail_validation() {
+    let json = r#"{"compiled_prompt":"ok","warnings":["LLM response format was repaired"]}"#;
+    let result = std::panic::catch_unwind(|| {
+        assert_no_provider_fallback_in_warnings(json);
+    });
+    assert!(result.is_err(), "Repair warnings must fail validation");
+}
 
 #[test]
 fn test_smoke_skipped_without_env() {
