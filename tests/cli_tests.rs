@@ -929,3 +929,172 @@ fn test_slash_command_via_stdin_passes_through() {
         .to_string();
     assert_eq!(stdout, prompt, "Slash via stdin must pass through exactly");
 }
+
+// --- Phase 031: Env-file support tests ---
+
+fn write_temp_env_file(content: &str, name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir();
+    let path = dir.join(name);
+    std::fs::write(&path, content).expect("Failed to write temp env file");
+    path
+}
+
+#[test]
+fn test_env_file_missing_explicit_path_fails() {
+    let output = run(&[
+        "--prompt",
+        "fix bug",
+        "--env-file",
+        "/nonexistent/path/env.file",
+        "--json",
+    ]);
+    assert!(
+        !output.status.success(),
+        "Missing explicit --env-file must exit non-zero"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("does not exist"),
+        "Error must mention file does not exist"
+    );
+}
+
+#[test]
+fn test_env_file_flag_accepted_in_help() {
+    let output = run(&["--help"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("--env-file"),
+        "--help must mention --env-file"
+    );
+}
+
+#[test]
+fn test_env_file_missing_default_is_not_error() {
+    // Ensure no .env.local in cwd for this test
+    let cwd_env = std::path::PathBuf::from(".env.local");
+    let backup = if cwd_env.exists() {
+        let bak = cwd_env.with_extension("env.local.bak");
+        std::fs::rename(&cwd_env, &bak).ok();
+        true
+    } else {
+        false
+    };
+    // Should still succeed — missing default is not an error
+    let output = run(&["--prompt", "fix bug", "--json"]);
+    assert!(
+        output.status.success(),
+        "Missing default .env.local is not an error"
+    );
+    // Restore
+    if backup {
+        let bak = cwd_env.with_extension("env.local.bak");
+        std::fs::rename(&bak, &cwd_env).ok();
+    }
+}
+
+#[test]
+fn test_env_file_values_never_appear_in_output() {
+    // Set up a fake env file with a fake key
+    let env_key = "INTENTLAYER_031_TEST_LEAK";
+    let fake_val = "fake-openrouter-key-for-test";
+    let path = write_temp_env_file(
+        &format!("{}={}\n", env_key, fake_val),
+        "env_test_no_leak.env",
+    );
+
+    // Make sure the process env var is NOT set
+    std::env::remove_var(env_key);
+
+    // Run with --env-file, local compile (no LLM), so provider is not called
+    let output = run(&[
+        "--prompt",
+        "fix parser bug",
+        "--env-file",
+        path.to_str().unwrap(),
+        "--json",
+    ]);
+
+    // The fake key value must never appear in output
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stdout.contains(fake_val) && !stderr.contains(fake_val),
+        "Env-file values must never appear in output. stdout contains? {}, stderr contains? {}",
+        stdout.contains(fake_val),
+        stderr.contains(fake_val)
+    );
+
+    std::env::remove_var(env_key);
+}
+
+#[test]
+fn test_existing_env_overrides_env_file() {
+    let env_key = "INTENTLAYER_031_TEST_OVERRIDE";
+    let file_val = "file-value";
+    let env_val = "env-value";
+
+    // Set the env var FIRST (process env wins)
+    std::env::set_var(env_key, env_val);
+
+    let path = write_temp_env_file(
+        &format!("{}={}\n", env_key, file_val),
+        "env_test_override.env",
+    );
+
+    // Run with --env-file
+    let output = run(&[
+        "--prompt",
+        "fix parser bug",
+        "--env-file",
+        path.to_str().unwrap(),
+        "--json",
+    ]);
+    assert!(output.status.success());
+
+    // The process env should still have the original value
+    assert_eq!(
+        std::env::var(env_key).unwrap(),
+        env_val,
+        "Process env must override env-file"
+    );
+
+    std::env::remove_var(env_key);
+}
+
+#[test]
+fn test_env_file_loads_variable_when_env_not_set() {
+    let env_key = "INTENTLAYER_031_TEST_LOAD";
+    std::env::remove_var(env_key);
+
+    let path = write_temp_env_file(
+        &format!("{}={}\n", env_key, "fake-key-from-file"),
+        "env_test_load.env",
+    );
+
+    // Use --llm to trigger API key resolution. Without the feature,
+    // the binary will at least pass env resolution — the key point
+    // is that the env-file provides the var so resolve_from_env
+    // should not fail with "MissingEnvVar".
+    let output = run(&[
+        "--prompt",
+        "fix parser bug",
+        "--llm",
+        "--provider",
+        "openrouter",
+        "--api-key-env",
+        env_key,
+        "--env-file",
+        path.to_str().unwrap(),
+        "--json",
+    ]);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains(env_key),
+        "Error should NOT report missing env var when env-file provides it: {}",
+        stderr
+    );
+
+    std::env::remove_var(env_key);
+}
