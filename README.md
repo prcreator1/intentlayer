@@ -191,6 +191,10 @@ INTENTLAYER_RUN_LIVE_SMOKE=1 cargo test --features openrouter-http -- --ignored
 - Verifies deterministic bypass and real llm_compile call
 - Fails if provider fallback occurs
 
+## Dogfood / Install
+
+See [Private Dogfood Guide](docs/PRIVATE_DOGFOOD.md) and [Checklist](docs/DOGFOOD_CHECKLIST.md).
+
 ## Feature-Gated OpenRouter HTTP Transport
 
 Real OpenRouter HTTP transport exists only behind the `openrouter-http`
