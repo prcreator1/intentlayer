@@ -761,7 +761,7 @@ All pass. 2 live smoke tests ignored.
 No new provider added. No default network calls.
 
 ### Test Results
-**200 tests (default) / 206 tests (combined features)**
+**203 tests (default) / 206 tests (combined features)**
 2 live smoke ignored. All pass.
 
 ---
@@ -783,5 +783,5 @@ HTTP transport → parser → fallback detection → invention guard → Compile
 - `smoke_real_groq_compile_call` ignored live test (INTENTLAYER_RUN_LIVE_GROQ_SMOKE=1)
 
 ### Test Results
-**200 tests (default) / 206 tests (combined features)**
+**203 tests (default) / 206 tests (combined features)**
 4 live smoke tests pass with real keys. All non-ignored pass.
