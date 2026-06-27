@@ -12,6 +12,23 @@ pub struct CompileInput {
     pub prompt: String,
 }
 
+/// Routing metadata added by the router (Phase 032A).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoutingInfo {
+    pub rewrite_strategy: String,
+    pub routing_score: i32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub routing_signals: Vec<String>,
+    pub llm_requested: bool,
+    pub llm_used: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_skip_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
 /// Output JSON.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompileOutput {
@@ -23,6 +40,9 @@ pub struct CompileOutput {
     pub warnings: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_error: Option<String>,
+    /// Phase 032A: routing metadata (only present when routing is active)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub routing: Option<RoutingInfo>,
 }
 
 /// The compiler holds a loaded [`RuleSet`] for pattern matching and templates.
@@ -79,6 +99,7 @@ impl Compiler {
                 changed,
                 warnings: all_warnings,
                 provider_error: None,
+                routing: None,
             };
         }
 
@@ -90,6 +111,7 @@ impl Compiler {
             changed,
             warnings,
             provider_error: None,
+            routing: None,
         }
     }
 

@@ -172,6 +172,7 @@ pub fn compile_with_llm_orchestration(
             changed: true,
             warnings,
             provider_error: None,
+            routing: None,
         },
 
         // Normal envelope — call provider with full envelope request
@@ -212,6 +213,7 @@ pub fn compile_with_llm_orchestration(
                         changed: true,
                         warnings: all_warnings,
                         provider_error: None,
+                        routing: None,
                     }
                 }
                 Err(err) => {
@@ -233,6 +235,7 @@ pub fn compile_with_llm_orchestration(
                         changed: true,
                         warnings,
                         provider_error: Some(sanitized_error),
+                        routing: None,
                     }
                 }
             }

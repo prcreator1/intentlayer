@@ -167,6 +167,16 @@ const FEATURE_SPECIFIC: &[Phrase] = &[
 
 const PRODUCTION_SPECIFIC: &[Phrase] = &[
     (
+        "production ready",
+        "production_readiness_hardening",
+        Mode::LocalCompile,
+    ),
+    (
+        "make it production",
+        "production_readiness_hardening",
+        Mode::LocalCompile,
+    ),
+    (
         "add logging",
         "production_readiness_hardening",
         Mode::LocalCompile,
