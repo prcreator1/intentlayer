@@ -27,8 +27,10 @@ Options:
   --json                Output compact JSON.
   --compiled-only       Print only compiled_prompt as plain text (no JSON).
                         Intended for direct handoff to downstream agents.
-  --llm                 Enable LLM-assisted compilation (opt-in).
-                        Requires --provider openrouter + --api-key-env.
+  --llm                 Enable smart LLM-assisted compilation for vague, broad,
+                        risky, or complex prompts.
+  --force-llm           Force LLM provider use for all non-pass-through prompts.
+                        Requires --llm.
   --provider <name>     LLM provider: openrouter, groq
   --model <name>        Model name override (default: from config)
   --api-key-env <ENV>   Env var name holding API key. Never a raw key.
@@ -65,6 +67,7 @@ struct Args {
     #[allow(dead_code)]
     temperature: Option<f32>,
     allow_llm_fallback: bool,
+    force_llm: bool,
 }
 
 /// Manual CLI parser.  Avoids adding a dependency for v0.1.
@@ -84,6 +87,7 @@ fn parse_args() -> Result<Args, String> {
     let mut max_tokens: Option<u32> = None;
     let mut temperature: Option<f32> = None;
     let mut allow_llm_fallback = false;
+    let mut force_llm = false;
     let mut env_file: Option<PathBuf> = None;
 
     let mut i = 1;
@@ -108,6 +112,9 @@ fn parse_args() -> Result<Args, String> {
             }
             "--allow-llm-fallback" => {
                 allow_llm_fallback = true;
+            }
+            "--force-llm" => {
+                force_llm = true;
             }
             "--env-file" => {
                 i += 1;
@@ -247,6 +254,7 @@ fn parse_args() -> Result<Args, String> {
         max_tokens,
         temperature,
         allow_llm_fallback,
+        force_llm,
     })
 }
 
@@ -370,13 +378,28 @@ fn main() {
         }
     };
 
+    // Validate --force-llm requires --llm
+    if args.force_llm && !args.llm {
+        eprintln!("Error: --force-llm requires --llm");
+        process::exit(1);
+    }
+
     let classification = {
         let rules = &compiler.rules;
         intentlayer::classifier::classify(&prompt_text, rules)
     };
 
-    let llm_eligible =
-        provider_kind.is_some() && classification.mode == intentlayer::classifier::Mode::LlmCompile;
+    // Phase 032A: routing decides rewrite strategy, not category alone
+    let routing = intentlayer::router::route_prompt(
+        &prompt_text,
+        &classification.category,
+        classification.mode,
+        args.llm,
+        args.force_llm,
+    );
+
+    let llm_eligible = provider_kind.is_some()
+        && routing.rewrite_strategy == intentlayer::router::RewriteStrategy::LlmCompile;
 
     // Only require API key when an actual LLM call will be made
     if llm_eligible && args.api_key_env.is_none() {
@@ -384,7 +407,7 @@ fn main() {
         process::exit(1);
     }
 
-    let output = if llm_eligible {
+    let mut output = if llm_eligible {
         match provider_kind {
             Some(intentlayer::llm_provider_registry::ProviderKind::OpenRouter) => {
                 run_llm_openrouter(
@@ -400,11 +423,54 @@ fn main() {
                 &args,
                 &compiler.rules,
             ),
-            _ => compiler.compile_prompt(&prompt_text),
+            _ => intentlayer::compiler::compile_with_strategy(
+                &compiler,
+                &prompt_text,
+                routing.rewrite_strategy.as_str(),
+                &classification,
+            ),
         }
     } else {
-        compiler.compile_prompt(&prompt_text)
+        intentlayer::compiler::compile_with_strategy(
+            &compiler,
+            &prompt_text,
+            routing.rewrite_strategy.as_str(),
+            &classification,
+        )
     };
+
+    // P2-4: Always attach routing metadata unconditionally
+    output.routing = Some(intentlayer::compiler::RoutingInfo {
+        rewrite_strategy: routing.rewrite_strategy.as_str().to_string(),
+        routing_score: routing.routing_score,
+        routing_signals: routing.routing_signals.clone(),
+        llm_requested: args.llm,
+        llm_used: llm_eligible,
+        llm_skip_reason: if llm_eligible {
+            None
+        } else {
+            routing.llm_skip_reason.clone()
+        },
+        provider: if llm_eligible {
+            args.provider.clone()
+        } else {
+            None
+        },
+        model: if llm_eligible {
+            args.model.clone().or_else(|| {
+                provider_kind.map(|k| match k {
+                    intentlayer::llm_provider_registry::ProviderKind::OpenRouter => {
+                        "gpt-4.1-mini".to_string()
+                    }
+                    intentlayer::llm_provider_registry::ProviderKind::Groq => {
+                        "llama-3.3-70b-versatile".to_string()
+                    }
+                })
+            })
+        } else {
+            None
+        },
+    });
 
     // Provider failure visibility: exit non-zero by default when LLM was requested
     // and the provider failed, unless --allow-llm-fallback is set.

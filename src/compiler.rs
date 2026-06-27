@@ -1,6 +1,6 @@
 //! Core compiler: routes a raw prompt through classification → mode → output.
 
-use crate::classifier::{classify, Mode};
+use crate::classifier::{classify, Classification, Mode};
 use crate::guard::check_invention;
 use crate::rules::RuleSet;
 
@@ -10,6 +10,23 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompileInput {
     pub prompt: String,
+}
+
+/// Routing metadata added by the router (Phase 032A).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoutingInfo {
+    pub rewrite_strategy: String,
+    pub routing_score: i32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub routing_signals: Vec<String>,
+    pub llm_requested: bool,
+    pub llm_used: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_skip_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 /// Output JSON.
@@ -23,12 +40,73 @@ pub struct CompileOutput {
     pub warnings: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_error: Option<String>,
+    /// Phase 032A: routing metadata (only present when routing is active)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub routing: Option<RoutingInfo>,
 }
 
 /// The compiler holds a loaded [`RuleSet`] for pattern matching and templates.
 #[derive(Debug, Clone)]
 pub struct Compiler {
     pub rules: RuleSet,
+}
+
+/// Compile a single prompt string using the explicit rewrite strategy.
+/// Unlike `compile_prompt()`, which follows `classification.mode`, this
+/// method respects the router's decision regardless of what the classifier
+/// returned.  Used by `main.rs` when routing metadata is available.
+pub fn compile_with_strategy(
+    compiler: &Compiler,
+    prompt: &str,
+    strategy: &str,
+    classification: &Classification,
+) -> CompileOutput {
+    let (compiled_prompt, changed) = match strategy {
+        "pass_through" => (prompt.to_string(), false),
+        "local_compile" => {
+            let compiled = compiler.apply_local_compile(prompt, classification);
+            let changed = compiled != prompt;
+            (compiled, changed)
+        }
+        "llm_compile" => {
+            // LLM not called here — use local fallback
+            let compiled = compiler.apply_llm_compile_stub(prompt, classification);
+            let changed = compiled != prompt;
+            (compiled, changed)
+        }
+        _ => {
+            let compiled = compiler.apply_local_compile(prompt, classification);
+            let changed = compiled != prompt;
+            (compiled, changed)
+        }
+    };
+
+    let warnings = check_invention(prompt, &compiled_prompt);
+    let clarification_warning = compiler.check_clarification(&compiled_prompt, classification);
+    if let Some(w) = clarification_warning {
+        let mut all_warnings = warnings;
+        all_warnings.push(w);
+        return CompileOutput {
+            original_prompt: prompt.to_string(),
+            compiled_prompt,
+            mode: classification.mode.to_string(),
+            category: classification.category.clone(),
+            changed,
+            warnings: all_warnings,
+            provider_error: None,
+            routing: None,
+        };
+    }
+    CompileOutput {
+        original_prompt: prompt.to_string(),
+        compiled_prompt,
+        mode: classification.mode.to_string(),
+        category: classification.category.clone(),
+        changed,
+        warnings,
+        provider_error: None,
+        routing: None,
+    }
 }
 
 impl Compiler {
@@ -79,6 +157,7 @@ impl Compiler {
                 changed,
                 warnings: all_warnings,
                 provider_error: None,
+                routing: None,
             };
         }
 
@@ -90,6 +169,7 @@ impl Compiler {
             changed,
             warnings,
             provider_error: None,
+            routing: None,
         }
     }
 

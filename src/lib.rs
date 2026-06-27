@@ -15,9 +15,10 @@ pub mod llm_parser;
 pub mod llm_provider_registry;
 pub mod openai_compatible;
 pub mod openrouter;
+pub mod router;
 pub mod rules;
 
-pub use compiler::{compile, CompileInput, CompileOutput, Compiler};
+pub use compiler::{compile, CompileInput, CompileOutput, Compiler, RoutingInfo};
 
 use std::path::Path;
 
