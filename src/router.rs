@@ -50,7 +50,10 @@ const VAGUE_TERMS: &[&str] = &[
     "don't break",
     "pls",
     "rn",
-    "like ",
+    "stuff like",
+    "like idk",
+    "like maybe",
+    "or something",
     "whatever",
     "i think",
     "something is wrong",
@@ -135,14 +138,14 @@ const TINY_PASS_THROUGH: &[&str] = &[
 
 fn count_technical_anchors(lower: &str) -> usize {
     let mut count = 0;
-    for c in lower.chars() {
-        if c == '.' || c == '/' || c == ':' {
-            count += 1;
-        }
-    }
+
+    // Only count real technical anchors — not bare punctuation
     let anchors: &[&str] = &[
+        // File paths and extensions
         "src/",
         "lib/",
+        "app/",
+        "tests/",
         "mod.rs",
         ".ts",
         ".tsx",
@@ -151,25 +154,47 @@ fn count_technical_anchors(lower: &str) -> usize {
         ".java",
         ".go",
         ".rs",
+        // Config files
+        "package.json",
+        "cargo.toml",
+        "dockerfile",
+        ".env",
+        // Function/class patterns
         "fn ",
         "def ",
         "class ",
-        "import ",
-        "from \"",
-        " from '",
         "function ",
         "const ",
         "let ",
-        ".env",
-        "config",
-        "dockerfile",
-        "package.json",
-        "cargo.toml",
+        "import ",
+        "from \"",
+        " from '",
+        // Endpoint patterns
+        "post /",
+        "get /",
+        "put /",
+        "delete /",
+        "patch /",
+        // Line references (file:line)
+        ":/", // catches pattern like "auth.rs:42"
+        // Execution command patterns
+        "git ",
+        "npm ",
+        "cargo ",
+        "docker ",
+        // Test patterns
         "unit test",
         "test for",
-        "endpoint",
+        // Concrete identifiers (camelCase/snake_case with specificity)
         "getcwd",
         "getcurrentworkingdirectory",
+        "usercontroller",
+        "tokenmap",
+        "oauth",
+        "jwt",
+        // Config terminology
+        "config",
+        "configure",
     ];
     for anchor in anchors {
         if lower.contains(anchor) {
@@ -603,5 +628,66 @@ mod tests {
             false,
         );
         assert_eq!(d.rewrite_strategy, RewriteStrategy::LlmCompile);
+    }
+
+    // ── P2-1: Punctuation does NOT count as technical anchor ──────
+
+    #[test]
+    fn test_punctuation_does_not_count_as_anchor() {
+        // "login fails. users get logged out. fix auth." has periods but no real anchors
+        let anchors = count_technical_anchors("login fails. users get logged out. fix auth.");
+        assert_eq!(
+            anchors, 0,
+            "Bare punctuation must not count as technical anchors"
+        );
+    }
+
+    #[test]
+    fn test_punctuated_auth_prompt_routes_to_llm() {
+        let d = decide(
+            "login fails. users get logged out. fix auth.",
+            "security_permissions_auth",
+            true,
+            false,
+        );
+        assert_eq!(
+            d.rewrite_strategy,
+            RewriteStrategy::LlmCompile,
+            "Punctuated auth prompt must route to LLM, not be treated as already-good"
+        );
+        assert!(
+            d.routing_signals
+                .contains(&"high_risk_override".to_string())
+                || d.routing_signals.contains(&"high_risk_domain".to_string())
+        );
+    }
+
+    #[test]
+    fn test_real_file_path_counts_as_anchor() {
+        let anchors = count_technical_anchors(
+            "Fix the null pointer in UserController.java line 89 after OAuth callback.",
+        );
+        assert!(
+            anchors > 0,
+            "Real file references (UserController.java) must count as anchors"
+        );
+    }
+
+    // ── P2-2: Polite 'would like' does NOT count as vague ──────────
+
+    #[test]
+    fn test_polite_would_like_not_vague() {
+        let d = decide(
+            "I would like to add a spinner to Dashboard.tsx",
+            "ui_ux_fix",
+            true,
+            false,
+        );
+        assert_eq!(
+            d.rewrite_strategy,
+            RewriteStrategy::LocalCompile,
+            "Polite 'would like' must not trigger vague routing"
+        );
+        assert!(!d.routing_signals.contains(&"vague_wording".to_string()));
     }
 }

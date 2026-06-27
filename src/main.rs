@@ -423,43 +423,41 @@ fn main() {
                 &args,
                 &compiler.rules,
             ),
-            _ => {
-                let mut o = compiler.compile_prompt(&prompt_text);
-                o.routing = Some(intentlayer::compiler::RoutingInfo {
-                    rewrite_strategy: routing.rewrite_strategy.as_str().to_string(),
-                    routing_score: routing.routing_score,
-                    routing_signals: routing.routing_signals.clone(),
-                    llm_requested: args.llm,
-                    llm_used: false,
-                    llm_skip_reason: Some("provider_not_available".into()),
-                    provider: None,
-                    model: None,
-                });
-                o
-            }
+            _ => intentlayer::compiler::compile_with_strategy(
+                &compiler,
+                &prompt_text,
+                routing.rewrite_strategy.as_str(),
+                &classification,
+            ),
         }
     } else {
-        let mut o = compiler.compile_prompt(&prompt_text);
-        o.routing = Some(intentlayer::compiler::RoutingInfo {
-            rewrite_strategy: routing.rewrite_strategy.as_str().to_string(),
-            routing_score: routing.routing_score,
-            routing_signals: routing.routing_signals.clone(),
-            llm_requested: args.llm,
-            llm_used: false,
-            llm_skip_reason: routing.llm_skip_reason.clone(),
-            provider: None,
-            model: None,
-        });
-        o
+        intentlayer::compiler::compile_with_strategy(
+            &compiler,
+            &prompt_text,
+            routing.rewrite_strategy.as_str(),
+            &classification,
+        )
     };
 
-    // If LLM was actually used, stamp the routing info with provider/model
-    if llm_eligible {
-        if let Some(ref mut ri) = output.routing {
-            ri.llm_used = true;
-            ri.llm_skip_reason = None;
-            ri.provider = args.provider.clone();
-            ri.model = args.model.clone().or_else(|| {
+    // P2-4: Always attach routing metadata unconditionally
+    output.routing = Some(intentlayer::compiler::RoutingInfo {
+        rewrite_strategy: routing.rewrite_strategy.as_str().to_string(),
+        routing_score: routing.routing_score,
+        routing_signals: routing.routing_signals.clone(),
+        llm_requested: args.llm,
+        llm_used: llm_eligible,
+        llm_skip_reason: if llm_eligible {
+            None
+        } else {
+            routing.llm_skip_reason.clone()
+        },
+        provider: if llm_eligible {
+            args.provider.clone()
+        } else {
+            None
+        },
+        model: if llm_eligible {
+            args.model.clone().or_else(|| {
                 provider_kind.map(|k| match k {
                     intentlayer::llm_provider_registry::ProviderKind::OpenRouter => {
                         "gpt-4.1-mini".to_string()
@@ -468,9 +466,11 @@ fn main() {
                         "llama-3.3-70b-versatile".to_string()
                     }
                 })
-            });
-        }
-    }
+            })
+        } else {
+            None
+        },
+    });
 
     // Provider failure visibility: exit non-zero by default when LLM was requested
     // and the provider failed, unless --allow-llm-fallback is set.
